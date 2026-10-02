@@ -462,29 +462,35 @@ private struct ConsoleStatus: View {
     }
 }
 
+// Canvas can make the Intel simulator's first frame dependent on its Metal
+// renderer. Use a plain Shape for this static decorative background instead.
+// This is not a geographic map and does not imply offline map coverage.
 private struct TopographicLines: View {
     var body: some View {
-        Canvas { context, size in
-            for index in 0..<9 {
-                let ring = CGFloat(index)
-                let rect = CGRect(x: size.width * 0.49 - ring * 25,
-                                  y: -size.height * 0.42 + ring * 11,
-                                  width: size.width * 0.79 + ring * 44,
-                                  height: size.height * 1.22 + ring * 35)
-                let path = Path(ellipseIn: rect)
-                context.stroke(path, with: .color(FieldTheme.accent.opacity(index.isMultiple(of: 3) ? 0.28 : 0.13)),
-                               lineWidth: 1)
-            }
-            let cross = CGPoint(x: size.width * 0.79, y: size.height * 0.54)
-            var crosshair = Path()
-            crosshair.move(to: CGPoint(x: cross.x - 10, y: cross.y))
-            crosshair.addLine(to: CGPoint(x: cross.x + 10, y: cross.y))
-            crosshair.move(to: CGPoint(x: cross.x, y: cross.y - 10))
-            crosshair.addLine(to: CGPoint(x: cross.x, y: cross.y + 10))
-            context.stroke(crosshair, with: .color(FieldTheme.accent.opacity(0.75)), lineWidth: 1)
+        TopographicContourShape()
+            .stroke(FieldTheme.accent.opacity(0.19), lineWidth: 1)
+            .background(FieldTheme.panelRaised.opacity(0.68))
+            .accessibilityHidden(true)
+    }
+}
+
+private struct TopographicContourShape: Shape {
+    func path(in bounds: CGRect) -> Path {
+        var path = Path()
+        for index in 0..<9 {
+            let ring = CGFloat(index)
+            let contour = CGRect(x: bounds.width * 0.49 - ring * 25,
+                                 y: -bounds.height * 0.42 + ring * 11,
+                                 width: bounds.width * 0.79 + ring * 44,
+                                 height: bounds.height * 1.22 + ring * 35)
+            path.addEllipse(in: contour)
         }
-        .background(FieldTheme.panelRaised.opacity(0.68))
-        .accessibilityHidden(true)
+        let cross = CGPoint(x: bounds.width * 0.79, y: bounds.height * 0.54)
+        path.move(to: CGPoint(x: cross.x - 10, y: cross.y))
+        path.addLine(to: CGPoint(x: cross.x + 10, y: cross.y))
+        path.move(to: CGPoint(x: cross.x, y: cross.y - 10))
+        path.addLine(to: CGPoint(x: cross.x, y: cross.y + 10))
+        return path
     }
 }
 
