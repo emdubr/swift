@@ -92,9 +92,36 @@ jobs:
           # Capture launch failures for analysis instead of reporting a silent,
           # misleading success with no screenshot artifact.
           if ! xcrun simctl launch "$DEVICE" com.fieldos.native > build/screenshots/launch.txt 2>&1; then
-            echo "The native app failed to launch. See UI diagnostics."
-            xcrun simctl spawn "$DEVICE" log show --last 3m --style compact \
-              --predicate 'process == "FIELD iOS"' > build/screenshots/runtime-log.txt 2>&1 || true
+            echo "The native app exited on simulator startup. Collecting host and device crash evidence."
+            cat build/screenshots/launch.txt
+            # The simulator's own 'log show' can fail on hosted runner UID lookup.
+            # Read the host unified log too, and copy recent .ips/.crash files.
+            (log show --last 4m --style compact \
+              --predicate 'process == "FIELD iOS" OR eventMessage CONTAINS[c] "com.fieldos.native"' \
+              2>&1 | tail -n 240) > build/screenshots/host-log.txt || true
+            DEVICE_CRASHES="$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports"
+            HOST_CRASHES="$HOME/Library/Logs/DiagnosticReports"
+            for reports in "$DEVICE_CRASHES" "$HOST_CRASHES"; do
+              if [[ -d "$reports" ]]; then
+                while IFS= read -r -d '' crash; do
+                  if [[ $(stat -f%z "$crash") -le 1500000 ]]; then
+                    cp "$crash" "build/screenshots/$(basename "$crash")" || true
+                  fi
+                done < <(find "$reports" -maxdepth 1 -type f \
+                  \( -iname '*FIELD*.ips' -o -iname '*FIELD*.crash' -o -iname '*JetsamEvent*.ips' \) \
+                  -mmin -6 -print0 2>/dev/null)
+              fi
+            done
+            echo "Captured reports:"
+            ls -lh build/screenshots
+            echo "Host crash evidence:"
+            tail -n 55 build/screenshots/host-log.txt || true
+            for crash in build/screenshots/*FIELD*.ips build/screenshots/*FIELD*.crash; do
+              if [[ -f "$crash" ]]; then
+                echo "Crash signature from $(basename "$crash"):"
+                grep -aEi -m 20 'exception|termination|reason|dyld|error|triggered by' "$crash" || true
+              fi
+            done
             exit 1
           fi
           sleep 4
