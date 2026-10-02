@@ -113,14 +113,32 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
         print(f"{label}: alive after 7 seconds={alive}", flush=True)
         if alive:
             screenshot = ROOT / (label + ".png")
-            capture_code, capture_log = bounded(
-                ["xcrun", "simctl", "io", device, "screenshot", str(screenshot)],
-                seconds=17)
-            (ROOT / (label + "-screenshot-log.txt")).write_text(capture_log)
-            if capture_code == 0 and screenshot.exists() and screenshot.stat().st_size > 1000:
-                print(f"{label}: screenshot captured ({screenshot.stat().st_size} bytes)",
-                      flush=True)
-                return True
+            evidence = ROOT / (label + "-render-verification.txt")
+            # Cold-run iPhone simulators can return white screenshots despite
+            # successful process launch. Wait for *visible pixels*, not just a PID.
+            for attempt in range(4):
+                if screenshot.exists():
+                    screenshot.unlink()
+                capture_code, capture_log = bounded(
+                    ["xcrun", "simctl", "io", device, "screenshot", str(screenshot)],
+                    seconds=17)
+                with (ROOT / (label + "-screenshot-log.txt")).open("a") as log_file:
+                    log_file.write(f"Attempt {attempt + 1}: {capture_log}\n")
+                if capture_code == 0 and screenshot.exists() and screenshot.stat().st_size > 1000:
+                    check_code, check_output = bounded(
+                        ["build/validate-screenshot", str(screenshot)], seconds=7)
+                    with evidence.open("a") as report:
+                        report.write(f"Attempt {attempt + 1}: {check_output}\n")
+                    if check_code == 0:
+                        print(f"{label}: actual UI image verified after {attempt + 1} attempt(s)", flush=True)
+                        return True
+                    print(f"{label}: screenshot is still blank (attempt {attempt + 1})", flush=True)
+                else:
+                    print(f"{label}: screenshot capture failed (attempt {attempt + 1}, code={capture_code})", flush=True)
+                if attempt < 3 and still_alive(pid):
+                    time.sleep(8)
+                else:
+                    break
     # Always capture failure logs, whether simctl returned an error, returned a
     # dead PID, or hung. This avoids misleading green builds.
     capture_crashes(device, label)
@@ -145,11 +163,11 @@ def main() -> int:
             return 3
     if not launch(device, "01-minimal-probe", ["-FIELDStartupProbe"]):
         return 1
-    if not launch(device, "02-native-dashboard", []):
+    if not launch(device, "02-native-dashboard", ["-FIELDRenderOnly"]):
         return 2
-    if not launch(device, "03-native-map", ["-FIELDPreviewMap"]):
+    if not launch(device, "03-native-map", ["-FIELDPreviewMap", "-FIELDRenderOnly"]):
         return 4
-    if not launch(device, "04-native-route-planner", ["-FIELDPreviewRoute"]):
+    if not launch(device, "04-native-route-planner", ["-FIELDPreviewRoute", "-FIELDRenderOnly"]):
         return 5
     print("Baseline, native dashboard, map and route planner all launched.", flush=True)
     return 0
