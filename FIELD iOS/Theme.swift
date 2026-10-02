@@ -1,22 +1,32 @@
 import SwiftUI
 
+// The same restrained terminal palette as the browser console, with native
+// touch targets and enough contrast for sunlight / smaller mobile displays.
 struct FieldTheme {
-    static let background = Color(red: 0.025, green: 0.055, blue: 0.038)
-    static let panel = Color(red: 0.045, green: 0.095, blue: 0.065)
-    static let panelRaised = Color(red: 0.060, green: 0.125, blue: 0.082)
-    static let accent = Color(red: 0.45, green: 0.96, blue: 0.48)
-    static let amber = Color(red: 1.0, green: 0.73, blue: 0.24)
-    static let danger = Color(red: 1.0, green: 0.30, blue: 0.26)
-    static let text = Color(red: 0.80, green: 0.98, blue: 0.82)
-    static let dim = Color(red: 0.48, green: 0.66, blue: 0.50)
-    static let border = Color(red: 0.19, green: 0.48, blue: 0.24)
+    static let background = Color(red: 7.0 / 255, green: 16.0 / 255, blue: 9.0 / 255)
+    static let panel = Color(red: 11.0 / 255, green: 21.0 / 255, blue: 13.0 / 255)
+    static let panelRaised = Color(red: 16.0 / 255, green: 35.0 / 255, blue: 23.0 / 255)
+    static let accent = Color(red: 114.0 / 255, green: 229.0 / 255, blue: 142.0 / 255)
+    static let amber = Color(red: 1.0, green: 0.82, blue: 0.40)
+    static let danger = Color(red: 1.0, green: 0.42, blue: 0.42)
+    static let text = Color(red: 0.81, green: 0.97, blue: 0.84)
+    static let dim = Color(red: 0.53, green: 0.70, blue: 0.56)
+    static let border = Color(red: 36.0 / 255, green: 85.0 / 255, blue: 55.0 / 255)
 }
 
 struct FieldPanelModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(14)
-            .background(FieldTheme.panel.opacity(0.96), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [FieldTheme.panelRaised.opacity(0.58), FieldTheme.panel.opacity(0.98)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(FieldTheme.border.opacity(0.75), lineWidth: 1)
@@ -34,12 +44,15 @@ struct TerminalButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold).monospaced())
             .foregroundStyle(FieldTheme.text)
             .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .background(configuration.isPressed ? FieldTheme.panelRaised : FieldTheme.panel)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(
+                configuration.isPressed ? FieldTheme.panelRaised : FieldTheme.panel,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 10).stroke(FieldTheme.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(FieldTheme.border, lineWidth: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
     }
 }

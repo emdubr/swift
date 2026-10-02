@@ -2,8 +2,20 @@ import SwiftUI
 
 struct ReadinessView: View {
     @EnvironmentObject private var state: AppState
+    var embedded: Bool = false
 
     var body: some View {
+        Group {
+            if embedded {
+                checklist
+            } else {
+                checklist.fieldPanel()
+            }
+        }
+        .onChange(of: state.readiness) { _, _ in state.persist() }
+    }
+
+    private var checklist: some View {
         VStack(alignment: .leading, spacing: 10) {
             FieldHeader(title: "Readiness", subtitle: "\(state.readiness.completedCount)/\(state.readiness.totalCount) // \(state.readiness.score)%")
             readinessRow("Navigation", "GPS and route confirmed", isOn: $state.readiness.navigationChecked)
@@ -15,8 +27,6 @@ struct ReadinessView: View {
             readinessRow("Route", "Route reviewed and saved", isOn: $state.readiness.routeChecked)
             readinessRow("Comms", "Primary/backup comms checked", isOn: $state.readiness.commsChecked)
         }
-        .fieldPanel()
-        .onChange(of: state.readiness) { _, _ in state.persist() }
     }
 
     private func readinessRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>) -> some View {
@@ -31,7 +41,9 @@ struct ReadinessView: View {
                     Text(subtitle).font(.caption2).foregroundStyle(FieldTheme.dim)
                 }
                 Spacer()
-            }.contentShape(Rectangle())
+            }
+            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+            .contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 }

@@ -111,6 +111,10 @@ jobs:
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" \
             'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
+          # Suppress first-run permission overlays so screenshots show actual SwiftUI.
+          # A device build still requests the user's consent normally.
+          xcrun simctl privacy "$DEVICE" grant location com.fieldos.native || true
+          xcrun simctl status_bar "$DEVICE" override --time "9:41" --wifiBars 3 --batteryState charged --batteryLevel 100 || true
           python3 Tests/simulator-smoke.py "$DEVICE" --runner-probe build/RunnerProbe.app
       - name: Upload iPhone UI preview and launch diagnostics
         if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))

@@ -81,7 +81,15 @@ struct MapScreen: View {
                 }
                 }
 
-                VStack(spacing: 8) {
+                VStack {
+                    mapSourceLabel
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .allowsHitTesting(false)
+
+                VStack(spacing: 9) {
                     if showSearch { searchResults }
                     if usingOffline {
                         Text("LOCAL PMTILES // NO NETWORK TILES")
@@ -93,24 +101,19 @@ struct MapScreen: View {
                             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
                     }
                     if let offlineMapError { Text(offlineMapError).font(.caption2).foregroundStyle(FieldTheme.danger) }
+                    mapToolDock
                     mapHUD
                 }.padding()
             }
-            .navigationTitle("Terrain Map")
+            .navigationTitle("TERRAIN MAP")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if offlineStyleURL != nil {
-                        Button { showingOffline.toggle() } label: {
-                            Label(showingOffline ? "Local map" : "Use offline map", systemImage: "square.stack.3d.up")
-                        }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSearch.toggle() } label: {
+                        Image(systemName: showSearch ? "xmark" : "magnifyingglass")
+                            .frame(width: 44, height: 42)
                     }
-                    if !usingOffline {
-                        Button { mapMode = mapMode == 0 ? 1 : 0 } label: { Image(systemName: mapMode == 0 ? "map" : "globe.americas.fill") }
-                    }
-                    Button { showSearch.toggle() } label: { Image(systemName: "magnifyingglass") }
-                    Button { centerOnUser() } label: { Image(systemName: "location.fill") }
-                    Button { fitRoute() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+                    .accessibilityLabel(showSearch ? "Close map search" : "Search offline places and waypoints")
                 }
             }
             .searchable(text: $searchText, isPresented: $showSearch, prompt: "Offline places / waypoints")
@@ -135,20 +138,93 @@ struct MapScreen: View {
         }
     }
 
+    private var mapSourceLabel: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(usingOffline ? FieldTheme.accent : FieldTheme.amber)
+                .frame(width: 6, height: 6)
+            Text(usingOffline ? "LOCAL PMTILES" : "APPLE MAPKIT")
+                .font(.caption2.bold().monospaced())
+                .tracking(0.8)
+                .foregroundStyle(FieldTheme.text)
+            Spacer(minLength: 5)
+            Text(state.activeRoute == nil ? "NO ROUTE" : "ROUTE LOADED")
+                .font(.caption2.monospaced())
+                .foregroundStyle(FieldTheme.dim)
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 36)
+        .background(FieldTheme.panel.opacity(0.95), in: Capsule())
+        .overlay(Capsule().stroke(FieldTheme.border.opacity(0.7)))
+    }
+
+    // Floating native controls stay above the tab bar, without blocking
+    // map gestures. GPS never auto-centers the camera after the user pans.
+    private var mapToolDock: some View {
+        HStack(spacing: 10) {
+            mapTool(symbol: "location.north.line.fill", name: "Center on GPS",
+                    disabled: locationService.location == nil) { centerOnUser() }
+            mapTool(symbol: "point.topleft.down.to.point.bottomright.curvepath",
+                    name: "Fit active route", disabled: state.activeRoute == nil) { fitRoute() }
+            mapTool(symbol: offlineStyleURL == nil ? "square.3.layers.3d" : "square.stack.3d.up",
+                    name: offlineStyleURL != nil
+                        ? (showingOffline ? "Use online map" : "Use offline map")
+                        : (mapMode == 0 ? "Use satellite imagery" : "Use standard map")) {
+                if offlineStyleURL != nil {
+                    showingOffline.toggle()
+                } else {
+                    mapMode = mapMode == 0 ? 1 : 0
+                }
+            }
+        }
+        .padding(7)
+        .background(FieldTheme.panel.opacity(0.96),
+                    in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(FieldTheme.border.opacity(0.82), lineWidth: 1)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func mapTool(symbol: String, name: String, disabled: Bool = false,
+                         action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
+                .frame(width: 46, height: 46)
+                .background(FieldTheme.panelRaised.opacity(0.85),
+                            in: RoundedRectangle(cornerRadius: 12))
+        }
+        .disabled(disabled)
+        .accessibilityLabel(name)
+    }
+
     private var mapHUD: some View {
-        HStack(spacing: 12) {
-            Label(gpsText, systemImage: "location.fill")
-            Spacer()
+        HStack(spacing: 9) {
+            Image(systemName: locationService.location == nil ? "location.slash" : "location.fill")
+                .foregroundStyle(locationService.location == nil ? FieldTheme.amber : FieldTheme.accent)
+            Text(gpsText)
+                .foregroundStyle(FieldTheme.text)
+            Spacer(minLength: 4)
             if let route = state.activeRoute {
-                let m = RouteEngine.metrics(for: route)
-                Text(String(format: "%.1f MI", m.distanceMiles))
+                let metrics = RouteEngine.metrics(for: route)
+                Text(String(format: "%.1f MI", metrics.distanceMiles))
+                    .foregroundStyle(FieldTheme.accent)
             }
             Text(altitudeText)
+                .foregroundStyle(FieldTheme.dim)
         }
         .font(.caption.bold().monospaced())
-        .foregroundStyle(FieldTheme.text)
-        .padding(11)
-        .background(.ultraThinMaterial, in: Capsule())
+        .padding(.horizontal, 13)
+        .frame(maxWidth: .infinity, minHeight: 46)
+        .background(FieldTheme.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(FieldTheme.border.opacity(0.82), lineWidth: 1)
+        }
     }
 
     private var searchResults: some View {
