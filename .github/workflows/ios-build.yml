@@ -49,6 +49,13 @@ jobs:
       - name: Compile independent SwiftUI simulator baseline (no boot)
         shell: bash
         run: bash Tests/build-runner-probe.sh
+      - name: Compile and self-test nonblank native UI screenshot verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcrun swiftc -framework AppKit Tests/validate-screenshot.swift -o build/validate-screenshot
+          python3 Tests/test_screenshot_contrast.py
       - name: Build for iPhone Simulator without signing
         shell: bash
         run: |
