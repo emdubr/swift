@@ -5,9 +5,18 @@ struct FieldHeader: View {
     var subtitle: String? = nil
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title.uppercased()).font(.headline.monospaced()).foregroundStyle(FieldTheme.text)
+            Text(title.uppercased())
+                .font(.subheadline.bold().monospaced())
+                .tracking(0.65)
+                .foregroundStyle(FieldTheme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             Spacer()
-            if let subtitle { Text(subtitle.uppercased()).font(.caption2.monospaced()).foregroundStyle(FieldTheme.dim) }
+            if let subtitle { Text(subtitle.uppercased())
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(FieldTheme.dim)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.77) }
         }
     }
 }
