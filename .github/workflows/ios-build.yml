@@ -55,6 +55,7 @@ jobs:
           set -euo pipefail
           mkdir -p build
           xcrun swiftc -framework AppKit Tests/validate-screenshot.swift -o build/validate-screenshot
+          python3 -m py_compile Tests/simulator-smoke.py
           python3 Tests/test_screenshot_contrast.py
       - name: Build for iPhone Simulator without signing
         shell: bash
@@ -120,7 +121,7 @@ jobs:
           # subsequent installation independently, then take screenshots in
           # a new step with a fresh timeout; neither changes production code.
           python3 - "$DEVICE" <<'PY'
-          import subprocess,sys
+          import subprocess,sys,time
           device=sys.argv[1]
           app="build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app"
           subprocess.run(["xcrun","simctl","install",device,app],check=True,timeout=150)
@@ -129,6 +130,9 @@ jobs:
           # here: these commands have hung CoreSimulatorService on free hosted
           # Intel runners and then even the standalone launch probe times out.
           print("Simulator app installed; using render-only launch arguments for permission-free UI capture.",flush=True)
+          # Bootstatus can finish before SpringBoard is ready for app launches.
+          # Let the hosted free runner settle before the first launch request.
+          time.sleep(20)
           PY
       - name: Capture real native dashboard, map and route planner
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
