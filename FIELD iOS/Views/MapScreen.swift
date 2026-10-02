@@ -1,6 +1,14 @@
 import MapKit
 import SwiftUI
 
+// Pre-resolve edges once per map render instead of scanning the whole node
+// array twice per segment on every camera gesture (previously O(E * V)).
+private struct VisibleTrailSegment: Identifiable {
+    var id: UUID
+    var start: CLLocationCoordinate2D
+    var end: CLLocationCoordinate2D
+}
+
 struct MapScreen: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var locationService: LocationService
@@ -22,6 +30,17 @@ struct MapScreen: View {
         return activePack.id.uuidString + "/" + (activePack.sourceLayers ?? []).joined(separator: ",")
     }
 
+    private var visibleTrailSegments: [VisibleTrailSegment] {
+        guard let network = state.trailNetwork,
+              network.edges.count <= 1800 else { return [] }
+        let nodes = Dictionary(network.nodes.map { ($0.id, $0.point.coordinate) },
+                               uniquingKeysWith: { first, _ in first })
+        return network.edges.compactMap { edge in
+            guard let start = nodes[edge.from], let end = nodes[edge.to] else { return nil }
+            return VisibleTrailSegment(id: edge.id, start: start, end: end)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
@@ -38,13 +57,9 @@ struct MapScreen: View {
                 } else {
                 Map(position: $position) {
                     UserAnnotation()
-                    if let network = state.trailNetwork, network.edges.count <= 1800 {
-                        ForEach(network.edges) { edge in
-                            if let a = network.nodes.first(where: { $0.id == edge.from }), let b = network.nodes.first(where: { $0.id == edge.to }) {
-                                MapPolyline(coordinates: [a.point.coordinate, b.point.coordinate])
-                                    .stroke(FieldTheme.dim.opacity(0.55), lineWidth: 2)
-                            }
-                        }
+                    ForEach(visibleTrailSegments) { segment in
+                        MapPolyline(coordinates: [segment.start, segment.end])
+                            .stroke(FieldTheme.dim.opacity(0.55), lineWidth: 2)
                     }
                     if let route = state.activeRoute, route.points.count >= 2 {
                         MapPolyline(coordinates: route.points.map(\.coordinate))
