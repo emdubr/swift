@@ -49,6 +49,9 @@ struct RootView: View {
                 .tag(AppTab.more)
                 .tabItem { Label(AppTab.more.rawValue, systemImage: AppTab.more.symbol) }
         }
+        .tint(FieldTheme.accent)
+        .toolbarBackground(FieldTheme.panel, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .background(FieldTheme.background.ignoresSafeArea())
         // FIELD_iOSApp owns the single location -> track recorder subscription.
         .onChange(of: state.selectedTab) { _, next in
