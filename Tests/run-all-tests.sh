@@ -17,4 +17,12 @@ if [[ "$(uname -s)" == Darwin ]]; then
     Tests/TrailNetworkTests.swift -o "$tmp/trail-test"
   "$tmp/trail-test"
 fi
+if [[ "$(uname -s)" == Darwin ]]; then
+  swiftc 'FIELD iOS/Models/FieldModels.swift' \
+    'FIELD iOS/Services/RouteEngine.swift' \
+    'FIELD iOS/Services/TrailNetworkService.swift' \
+    'FIELD iOS/Services/TrackRecorder.swift' \
+    Tests/TrackRecorderTests.swift -o "$tmp/track-test"
+  "$tmp/track-test"
+fi
 python3 Tests/check-project.py

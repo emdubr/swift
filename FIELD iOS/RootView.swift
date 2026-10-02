@@ -3,7 +3,6 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var locationService: LocationService
-    @EnvironmentObject private var trackRecorder: TrackRecorder
 
     var body: some View {
         TabView(selection: $state.selectedTab) {
@@ -24,9 +23,7 @@ struct RootView: View {
                 .tabItem { Label(AppTab.more.rawValue, systemImage: AppTab.more.symbol) }
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        .onReceive(locationService.$location.compactMap { $0 }) { location in
-            trackRecorder.ingest(location)
-        }
+        // FIELD_iOSApp owns the single location -> track recorder subscription.
         .onChange(of: state.settings.highAccuracyGPS) { _, value in
             locationService.setHighAccuracy(value)
         }
