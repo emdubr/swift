@@ -39,6 +39,8 @@ struct FIELD_iOSApp: App {
     // Cloud screenshot-only navigation. Never alters production launch behavior.
     private let previewMap = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewMap")
     private let previewRoute = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewRoute")
+    // CI screenshot-only: render genuine native views but avoid emulator-only sensor startup.
+    private let renderOnly = ProcessInfo.processInfo.arguments.contains("-FIELDRenderOnly")
 
     var body: some Scene {
         WindowGroup {
@@ -66,9 +68,13 @@ struct FIELD_iOSApp: App {
                         // Let the first SwiftUI frame render before initiating permissions
                         // or the motion pipeline. These aren't required for launch.
                         await Task.yield()
-                        locationService.requestAuthorization()
-                        sensorService.start()
-                        print("FIELD_BOOT_HARDWARE_REQUESTED")
+                        if !renderOnly {
+                            locationService.requestAuthorization()
+                            sensorService.start()
+                            print("FIELD_BOOT_HARDWARE_REQUESTED")
+                        } else {
+                            print("FIELD_BOOT_SCREENSHOT_ONLY_NO_HARDWARE")
+                        }
                     }
                     .onReceive(meshService.$latestEvent) { delivery in
                         if let delivery { appState.receiveMeshEvent(delivery.value) }
