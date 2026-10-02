@@ -103,9 +103,9 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
     pid = pid_from_output(output, bundle=bundle)
     print(f"{label}: simctl exit={code}, PID={pid}, output={output[-1500:]}", flush=True)
     if code == 0 and pid:
-        # A launch can succeed but the app may immediately exit/crash. Give the
-        # root scene time to render before testing process health/screenshot.
-        time.sleep(7)
+        # Distinguish a slow CoreSimulator foreground transition from a white
+        # native screen. This delay is only for cloud screenshots, never for UI.
+        time.sleep(11 if label != "01-minimal-probe" else 7)
         (ROOT / (label + "-process.txt")).write_text(
             bounded(["ps", "-p", str(pid), "-o", "pid=,comm="], seconds=4)[1]
         )
@@ -163,13 +163,17 @@ def main() -> int:
             return 3
     if not launch(device, "01-minimal-probe", ["-FIELDStartupProbe"]):
         return 1
-    if not launch(device, "02-native-dashboard", ["-FIELDRenderOnly"]):
+    # Same genuine DashboardView, minus RootView's TabView container. This
+    # distinguishes native dashboard rendering from a full-root problem.
+    if not launch(device, "02-isolated-real-dashboard", ["-FIELDIsolatedDashboard"]):
         return 2
-    if not launch(device, "03-native-map", ["-FIELDPreviewMap", "-FIELDRenderOnly"]):
+    if not launch(device, "03-native-dashboard", ["-FIELDRenderOnly"]):
+        return 3
+    if not launch(device, "04-native-map", ["-FIELDPreviewMap", "-FIELDRenderOnly"]):
         return 4
-    if not launch(device, "04-native-route-planner", ["-FIELDPreviewRoute", "-FIELDRenderOnly"]):
+    if not launch(device, "05-native-route-planner", ["-FIELDPreviewRoute", "-FIELDRenderOnly"]):
         return 5
-    print("Baseline, native dashboard, map and route planner all launched.", flush=True)
+    print("Minimal app, isolated real dashboard, full dashboard, map and route planner all rendered.", flush=True)
     return 0
 
 
