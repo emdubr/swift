@@ -41,12 +41,26 @@ struct FIELD_iOSApp: App {
     private let previewRoute = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewRoute")
     // CI screenshot-only: render genuine native views but avoid emulator-only sensor startup.
     private let renderOnly = ProcessInfo.processInfo.arguments.contains("-FIELDRenderOnly")
+    // Diagnostic only. Same real DashboardView, without TabView / RootView
+    // so the smoke test can tell a dashboard problem from tab-host startup.
+    private let isolateDashboard = ProcessInfo.processInfo.arguments.contains("-FIELDIsolatedDashboard")
 
     var body: some Scene {
         WindowGroup {
             if startupProbe {
                 FieldStartupProbeView()
                     .preferredColorScheme(.dark)
+            } else if isolateDashboard {
+                DashboardView()
+                    .environmentObject(appState)
+                    .environmentObject(locationService)
+                    .environmentObject(trackRecorder)
+                    .environmentObject(meshService)
+                    .environmentObject(sensorService)
+                    .environmentObject(checkInService)
+                    .environmentObject(peripheralBridge)
+                    .preferredColorScheme(.dark)
+                    .onAppear { print("FIELD_DIAGNOSTIC_ISOLATED_DASHBOARD_VISIBLE") }
             } else {
                 RootView()
                     .environmentObject(appState)
@@ -61,7 +75,12 @@ struct FIELD_iOSApp: App {
                     .onAppear { print("FIELD_BOOT_ROOT_VISIBLE") }
                     .task {
                         print("FIELD_BOOT_LOADING_LOCAL_DATA")
-                        await appState.load()
+                        // Clean screenshot CI has no user data to restore. Avoid a
+                        // filesystem handoff competing with the first animation.
+                        // Normal on-device launch ALWAYS loads the saved state.
+                        if !renderOnly {
+                            await appState.load()
+                        }
                         if previewMap { appState.selectedTab = .map }
                         if previewRoute { appState.selectedTab = .route }
                         print("FIELD_BOOT_LOCAL_DATA_READY")
