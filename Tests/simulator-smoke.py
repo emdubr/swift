@@ -149,7 +149,9 @@ def main() -> int:
         return 2
     if not launch(device, "03-native-map", ["-FIELDPreviewMap"]):
         return 4
-    print("Standalone SwiftUI, minimal app, native dashboard and native map all launched.", flush=True)
+    if not launch(device, "04-native-route-planner", ["-FIELDPreviewRoute"]):
+        return 5
+    print("Baseline, native dashboard, map and route planner all launched.", flush=True)
     return 0
 
 
