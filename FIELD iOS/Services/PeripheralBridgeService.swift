@@ -19,43 +19,70 @@ final class PeripheralBridgeService: NSObject, ObservableObject, CBCentralManage
     @Published private(set) var lastFrameHex = "—"
     @Published private(set) var lastFrameAt: Date?
     @Published private(set) var lastFrameLength = 0
-    private var central: CBCentralManager!
+    // Only create a BLE manager after the hardware diagnostics screen requests a scan.
+    private var central: CBCentralManager?
+    private var wantsScan = false
     private var expectedService: CBUUID?
     private var expectedCharacteristic: CBUUID?
     private var devices: [UUID: CBPeripheral] = [:]
     private var active: CBPeripheral?
 
-    override init() { super.init(); central = CBCentralManager(delegate: self, queue: nil) }
+    override init() { super.init() }
+
+    private func ensureCentral() -> CBCentralManager {
+        if let central { return central }
+        let instance = CBCentralManager(delegate: self, queue: nil)
+        central = instance
+        return instance
+    }
+
+    private func beginScan(using manager: CBCentralManager) {
+        guard wantsScan, manager.state == .poweredOn, let expectedService else { return }
+        devices = [:]; discovered = []; state = .scanning
+        manager.scanForPeripherals(withServices: [expectedService],
+                                   options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        note = "Scanning only for configured service…"
+    }
 
     static func valid128(_ value: String) -> Bool { UUID(uuidString: value.trimmingCharacters(in: .whitespacesAndNewlines)) != nil }
 
     func centralManagerDidUpdateState(_ manager: CBCentralManager) {
-        if manager.state != .poweredOn { state = .unavailable; note = "Bluetooth not powered on or unavailable" }
-        else if state == .unavailable { state = .idle; note = "Ready for configured GATT service scan" }
+        if manager.state == .poweredOn {
+            if wantsScan { beginScan(using: manager) }
+            else if state == .unavailable { state = .idle; note = "Ready for configured GATT service scan" }
+        } else if manager.state == .poweredOff || manager.state == .unauthorized || manager.state == .unsupported {
+            state = .unavailable
+            note = "Bluetooth is unavailable. Enable it and rescan."
+        }
     }
     func scan(service: String, notificationCharacteristic: String) {
         guard Self.valid128(service), Self.valid128(notificationCharacteristic) else {
             state = .error; note = "Enter exact 128-bit UUIDs from device firmware documentation."; return
         }
-        guard central.state == .poweredOn else { state = .unavailable; note = "Bluetooth not powered on."; return }
         expectedService = CBUUID(string: service)
         expectedCharacteristic = CBUUID(string: notificationCharacteristic)
-        devices = [:]; discovered = []; state = .scanning
-        central.scanForPeripherals(withServices: [expectedService!], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
-        note = "Scanning only for configured service…"
-        Task { @MainActor in
+        wantsScan = true
+        let manager = ensureCentral()
+        if manager.state == .poweredOn { beginScan(using: manager) }
+        else { state = .idle; note = "Initializing Bluetooth; scan starts when it is ready." }
+        Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(12))
-            if self.state == .scanning { self.stopScan() }
+            guard let self, self.wantsScan else { return }
+            self.stopScan()
         }
     }
-    func stopScan() { central.stopScan(); if state == .scanning { state = .idle } }
+    func stopScan() {
+        wantsScan = false
+        central?.stopScan()
+        if state == .scanning { state = .idle }
+    }
     func connect(_ id: UUID) {
-        guard let peripheral = devices[id] else { return }
+        guard let peripheral = devices[id], let central else { return }
         stopScan(); active = peripheral; peripheral.delegate = self
         state = .connecting
         central.connect(peripheral)
     }
-    func disconnect() { if let active { central.cancelPeripheralConnection(active) } }
+    func disconnect() { if let active { central?.cancelPeripheralConnection(active) } }
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
         devices[peripheral.identifier] = peripheral
