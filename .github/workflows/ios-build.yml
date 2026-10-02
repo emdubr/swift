@@ -70,71 +70,26 @@ jobs:
           name: FIELD-iOS-simulator
           path: build/FIELD-iOS-simulator.zip
           if-no-files-found: error
-          retention-days: 3
-      - name: Capture iPhone UI preview (manual runs only)
+          retention-days: 1
+      - name: Verify minimal SwiftUI and full FIELD/OS startup (opt-in)
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
-        continue-on-error: true
-        timeout-minutes: 4
+        timeout-minutes: 7
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/screenshots
           DEVICE="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; ids=[x["udid"] for runtime,devices in sorted(d.items()) if "iOS" in runtime for x in devices if x.get("isAvailable") and "iPhone" in x.get("name","")]; print(ids[-1] if ids else "")')"
           if [[ -z "$DEVICE" ]]; then
-            echo "No iPhone Simulator runtime installed on the GitHub runner."
-            exit 0
+            echo "No free standard-runner iPhone Simulator runtime is installed."
+            exit 1
           fi
+          echo "Testing iOS Simulator device: $DEVICE"
           trap 'xcrun simctl shutdown "$DEVICE" || true' EXIT
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" \
             'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
-          # A returned PID does not prove the app stays running or reaches its UI.
-          collect_launch_failure() {
-            echo "FIELD / OS did not stay alive on simulator. Collecting crash evidence."
-            cat build/screenshots/launch.txt || true
-            (log show --last 5m --style compact \
-              --predicate 'process == "FIELD iOS" OR eventMessage CONTAINS[c] "com.fieldos.native"' \
-              2>&1 | tail -n 280) > build/screenshots/host-log.txt || true
-            DEVICE_CRASHES="$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports"
-            HOST_CRASHES="$HOME/Library/Logs/DiagnosticReports"
-            for reports in "$DEVICE_CRASHES" "$HOST_CRASHES"; do
-              if [[ -d "$reports" ]]; then
-                while IFS= read -r -d '' crash; do
-                  if [[ $(stat -f%z "$crash") -le 1500000 ]]; then
-                    cp "$crash" "build/screenshots/$(basename "$crash")" || true
-                  fi
-                done < <(find "$reports" -maxdepth 1 -type f \
-                  \( -iname '*FIELD*.ips' -o -iname '*FIELD*.crash' -o -iname '*JetsamEvent*.ips' \) \
-                  -mmin -6 -print0 2>/dev/null)
-              fi
-            done
-            echo "Captured diagnostics:"
-            ls -lh build/screenshots
-            tail -n 45 build/screenshots/host-log.txt || true
-            for crash in build/screenshots/*FIELD*.ips build/screenshots/*FIELD*.crash; do
-              if [[ -f "$crash" ]]; then
-                echo "Crash signature from $(basename "$crash"):"
-                grep -aEi -m 30 'exception|termination|reason|dyld|error|triggered by' "$crash" || true
-              fi
-            done
-          }
-          if ! xcrun simctl launch "$DEVICE" com.fieldos.native > build/screenshots/launch.txt 2>&1; then
-            collect_launch_failure
-            exit 1
-          fi
-          sleep 8
-          PID="$(sed -n 's/^com.fieldos.native: //p' build/screenshots/launch.txt | tail -n 1)"
-          echo "Launch PID: $PID"
-          ps -p "$PID" -o pid=,comm= > build/screenshots/process-after-8s.txt 2>&1 || true
-          (xcrun simctl spawn "$DEVICE" launchctl list | grep -i fieldos || true) \
-            > build/screenshots/simulator-launchctl.txt 2>&1 || true
-          if [[ ! "$PID" =~ ^[0-9]+$ ]] || ! kill -0 "$PID" 2>/dev/null; then
-            echo "Launch returned a PID, but the FIELD / OS process exited before its first screenshot."
-            collect_launch_failure
-            exit 1
-          fi
-          xcrun simctl io "$DEVICE" screenshot build/screenshots/FIELD-iOS-home.png
+          python3 Tests/simulator-smoke.py "$DEVICE"
       - name: Upload iPhone UI preview and launch diagnostics
         if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
         uses: actions/upload-artifact@v4
