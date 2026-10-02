@@ -102,7 +102,7 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
     for attempt in range(3):
         try:
             with output_path.open("a") as output_file:
-                output_file.write(f"Launch attempt {attempt + 1}\\n")
+                output_file.write(f"Launch attempt {attempt + 1}\n")
                 output_file.flush()
                 result = subprocess.run(command, stdout=output_file,
                                         stderr=subprocess.STDOUT, timeout=38)
@@ -110,11 +110,11 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
         except subprocess.TimeoutExpired:
             code = 124
             with output_path.open("a") as output_file:
-                output_file.write("SIMCTL LAUNCH HANDSHAKE TIMED OUT AFTER 38 SECONDS\\n")
+                output_file.write("SIMCTL LAUNCH HANDSHAKE TIMED OUT AFTER 38 SECONDS\n")
         except OSError as error:
             code = 126
             with output_path.open("a") as output_file:
-                output_file.write("LAUNCH EXCEPTION: " + str(error) + "\\n")
+                output_file.write("LAUNCH EXCEPTION: " + str(error) + "\n")
         output = output_path.read_text(errors="replace")
         # Check only the latest launch attempt, not a stale PID from a
         # previous, timed-out attempt.
