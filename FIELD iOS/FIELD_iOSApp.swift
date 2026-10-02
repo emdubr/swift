@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 // A deliberately minimal path for cloud simulator runtime checks. It creates no
 // hardware managers and does not read previous app state. If this view will not
@@ -19,7 +20,7 @@ private struct FieldStartupProbeView: View {
         .background(Color.black)
         .foregroundStyle(Color.green)
         .accessibilityIdentifier("field-native-startup-check")
-        .onAppear { print("FIELD_BOOT_PROBE_VISIBLE") }
+        .onAppear { Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_PROBE_VISIBLE") }
     }
 }
 
@@ -60,7 +61,7 @@ struct FIELD_iOSApp: App {
                     .environmentObject(checkInService)
                     .environmentObject(peripheralBridge)
                     .preferredColorScheme(.dark)
-                    .onAppear { print("FIELD_DIAGNOSTIC_ISOLATED_DASHBOARD_VISIBLE") }
+                    .onAppear { Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_DIAGNOSTIC_ISOLATED_DASHBOARD_VISIBLE") }
             } else {
                 RootView()
                     .environmentObject(appState)
@@ -72,9 +73,9 @@ struct FIELD_iOSApp: App {
                     .environmentObject(peripheralBridge)
                     .preferredColorScheme(.dark)
                     .tint(FieldTheme.accent)
-                    .onAppear { print("FIELD_BOOT_ROOT_VISIBLE") }
+                    .onAppear { Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_ROOT_VISIBLE") }
                     .task {
-                        print("FIELD_BOOT_LOADING_LOCAL_DATA")
+                        Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_LOADING_LOCAL_DATA")
                         // Clean screenshot CI has no user data to restore. Avoid a
                         // filesystem handoff competing with the first animation.
                         // Normal on-device launch ALWAYS loads the saved state.
@@ -83,16 +84,16 @@ struct FIELD_iOSApp: App {
                         }
                         if previewMap { appState.selectedTab = .map }
                         if previewRoute { appState.selectedTab = .route }
-                        print("FIELD_BOOT_LOCAL_DATA_READY")
+                        Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_LOCAL_DATA_READY")
                         // Let the first SwiftUI frame render before initiating permissions
                         // or the motion pipeline. These aren't required for launch.
                         await Task.yield()
                         if !renderOnly {
                             locationService.requestAuthorization()
                             sensorService.start()
-                            print("FIELD_BOOT_HARDWARE_REQUESTED")
+                            Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_HARDWARE_REQUESTED")
                         } else {
-                            print("FIELD_BOOT_SCREENSHOT_ONLY_NO_HARDWARE")
+                            Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_SCREENSHOT_ONLY_NO_HARDWARE")
                         }
                     }
                     .onReceive(meshService.$latestEvent) { delivery in
