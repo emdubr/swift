@@ -25,4 +25,5 @@ if [[ "$(uname -s)" == Darwin ]]; then
     Tests/TrackRecorderTests.swift -o "$tmp/track-test"
   "$tmp/track-test"
 fi
+python3 -m unittest discover -s Tests -p 'test_simulator_*.py'
 python3 Tests/check-project.py
