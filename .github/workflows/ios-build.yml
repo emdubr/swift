@@ -1,0 +1,74 @@
+name: iOS cloud build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'FIELD iOS/**'
+      - 'FIELD iOS.xcodeproj/**'
+      - 'Tests/**'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    paths:
+      - 'FIELD iOS/**'
+      - 'FIELD iOS.xcodeproj/**'
+      - 'Tests/**'
+      - '.github/workflows/ios-build.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Validate Foundation tests and project references
+        run: bash Tests/run-all-tests.sh
+      - name: Build for iPhone Simulator without signing
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild \
+            -project "FIELD iOS.xcodeproj" \
+            -scheme "FIELD iOS" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/FIELD.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build/xcodebuild.log
+      - name: Package simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app' \
+            build/FIELD-iOS-simulator.zip
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-simulator
+          path: build/FIELD-iOS-simulator.zip
+          if-no-files-found: error
+          retention-days: 3
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-build-diagnostics
+          path: |
+            build/xcodebuild.log
+            build/FIELD.xcresult
+          if-no-files-found: ignore
+          retention-days: 3

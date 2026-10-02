@@ -1,0 +1,15 @@
+from pathlib import Path
+import re, plistlib, sys
+project=Path('FIELD iOS.xcodeproj/project.pbxproj').read_text()
+files=list(Path('FIELD iOS').rglob('*.swift'))
+missing=[str(p) for p in files if len(re.findall(r'path = "?'+re.escape(p.name)+r'"?;',project))!=1]
+if missing: sys.exit('ERROR: Swift files missing or duplicate Xcode file refs '+str(missing))
+source_section=project.split('/* Begin PBXSourcesBuildPhase section */')[1].split('/* End PBXSourcesBuildPhase section */')[0]
+with_sources=set(re.findall(r'A300000000000000000000[0-9A-F]{2}',source_section))
+expected=set(re.findall(r'(A300000000000000000000[0-9A-F]{2}) /\* .* in Sources \*/ =',project))
+if with_sources!=expected: sys.exit('ERROR: unassigned/duplicate Source build phase refs '+str(with_sources^expected))
+assert 'https://github.com/maplibre/maplibre-gl-native-distribution' in project
+assert 'J30000000000000000000001' in project
+with Path('FIELD iOS/Resources/Info.plist').open('rb') as stream: info=plistlib.load(stream)
+assert info['CFBundleShortVersionString']=='0.8' and info['CFBundleVersion']=='8'
+print(f'PASS: all {len(files)} Swift files uniquely present in Xcode, MapLibre SPM product linked, Info.plist version 0.8')
