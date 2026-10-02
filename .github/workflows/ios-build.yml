@@ -44,6 +44,9 @@ jobs:
             ios-spm-${{ runner.os }}-
       - name: Validate Foundation tests and project references
         run: bash Tests/run-all-tests.sh
+      - name: Compile independent SwiftUI simulator baseline (no boot)
+        shell: bash
+        run: bash Tests/build-runner-probe.sh
       - name: Build for iPhone Simulator without signing
         shell: bash
         run: |
@@ -106,7 +109,6 @@ jobs:
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" \
             'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
-          bash Tests/build-runner-probe.sh
           python3 Tests/simulator-smoke.py "$DEVICE" --runner-probe build/RunnerProbe.app
       - name: Upload iPhone UI preview and launch diagnostics
         if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
