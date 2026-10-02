@@ -22,8 +22,8 @@ ROOT = Path("build/screenshots")
 ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def pid_from_output(output: str) -> int | None:
-    match = re.search(r"^" + re.escape(BUNDLE) + r": (\d+)\s*$", output, re.MULTILINE)
+def pid_from_output(output: str, bundle: str = BUNDLE) -> int | None:
+    match = re.search(r"^" + re.escape(bundle) + r": (\d+)\s*$", output, re.MULTILINE)
     return int(match.group(1)) if match else None
 
 
@@ -78,9 +78,9 @@ def capture_crashes(device: str, label: str) -> None:
                 continue
 
 
-def launch(device: str, label: str, args: list[str]) -> bool:
+def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bool:
     command = ["xcrun", "simctl", "launch", "--terminate-running-process",
-               device, BUNDLE, *args]
+               device, bundle, *args]
     output_path = ROOT / (label + "-launch.txt")
     try:
         with output_path.open("w") as output_file:
@@ -100,7 +100,7 @@ def launch(device: str, label: str, args: list[str]) -> bool:
             output_file.write("\nLAUNCH EXCEPTION: " + str(error) + "\n")
 
     output = output_path.read_text(errors="replace")
-    pid = pid_from_output(output)
+    pid = pid_from_output(output, bundle=bundle)
     print(f"{label}: simctl exit={code}, PID={pid}, output={output[-1500:]}", flush=True)
     if code == 0 and pid:
         # A launch can succeed but the app may immediately exit/crash. Give the
@@ -131,8 +131,18 @@ def launch(device: str, label: str, args: list[str]) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("device", help="Simulator UDID obtained by simctl")
+    parser.add_argument("--runner-probe", help="Optional stand-alone baseline app for isolating hosted simulator faults")
     options = parser.parse_args()
     device = options.device
+    if options.runner_probe:
+        rc, output = bounded(["xcrun", "simctl", "install", device, options.runner_probe], seconds=35)
+        (ROOT / "00-host-baseline-install.txt").write_text(output)
+        if rc != 0:
+            print("Could not install independent simulator baseline", flush=True)
+            return 3
+        if not launch(device, "00-host-baseline", [], bundle="com.fieldos.runnerprobe"):
+            print("Even a dependency-free SwiftUI app failed; suspect hosted simulator environment.", flush=True)
+            return 3
     if not launch(device, "01-minimal-probe", ["-FIELDStartupProbe"]):
         return 1
     if not launch(device, "02-native-dashboard", []):
