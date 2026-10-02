@@ -32,34 +32,68 @@ final class MeshService: NSObject, ObservableObject, CBCentralManagerDelegate, C
     private var activePacketID: UInt32?
     private var recentPackets: [String] = []
 
-    private var central: CBCentralManager!
+    // Do not instantiate CoreBluetooth until the operator actually requests a scan.
+    // In particular, dashboard startup and simulator launch need no BLE manager.
+    private var central: CBCentralManager?
+    private var wantsScan = false
     private var peripherals: [UUID: CBPeripheral] = [:]
     private var fromRadio: CBCharacteristic?
     private var toRadio: CBCharacteristic?
     private var fromNum: CBCharacteristic?
 
-    override init() { super.init(); central = CBCentralManager(delegate: self, queue: nil) }
+    override init() { super.init() }
 
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        bluetoothState = central.state
-        if central.state != .poweredOn { linkState = .unavailable; resetTransport() }
-        else if linkState == .unavailable { linkState = .idle }
+    private func ensureCentral() -> CBCentralManager {
+        if let central { return central }
+        let instance = CBCentralManager(delegate: self, queue: nil)
+        central = instance
+        return instance
     }
 
-    func scan() {
-        guard central.state == .poweredOn else { linkState = .unavailable; return }
-        peers = []; peripherals = [:]; linkState = .scanning
-        central.scanForPeripherals(withServices: [Self.meshServiceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
-        transportNote = "Scanning for Meshtastic service…"
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(10)); if self.linkState == .scanning { self.stopScan() }
+    func centralManagerDidUpdateState(_ manager: CBCentralManager) {
+        bluetoothState = manager.state
+        if manager.state == .poweredOn {
+            if wantsScan { beginScan(using: manager) }
+            else if linkState == .unavailable { linkState = .idle }
+        } else if manager.state == .poweredOff || manager.state == .unauthorized || manager.state == .unsupported {
+            linkState = .unavailable
+            transportNote = "Bluetooth is unavailable; enable it and scan again."
+            resetTransport()
         }
     }
 
-    func stopScan() { central.stopScan(); if linkState == .scanning { linkState = .idle }; if peers.isEmpty { transportNote = "No Meshtastic BLE radios found." } }
+    private func beginScan(using manager: CBCentralManager) {
+        guard wantsScan, manager.state == .poweredOn else { return }
+        peers = []; peripherals = [:]; linkState = .scanning
+        manager.scanForPeripherals(withServices: [Self.meshServiceUUID],
+                                   options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        transportNote = "Scanning for Meshtastic service…"
+    }
+
+    func scan() {
+        wantsScan = true
+        let manager = ensureCentral()
+        if manager.state == .poweredOn { beginScan(using: manager) }
+        else {
+            linkState = .idle
+            transportNote = "Initializing Bluetooth; scanning will begin when it is ready."
+        }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, self.wantsScan else { return }
+            self.stopScan()
+        }
+    }
+
+    func stopScan() {
+        wantsScan = false
+        central?.stopScan()
+        if linkState == .scanning { linkState = .idle }
+        if peers.isEmpty { transportNote = "No Meshtastic BLE radios found." }
+    }
 
     func connect(to id: UUID) {
-        guard let peripheral = peripherals[id] else { return }
+        guard let peripheral = peripherals[id], let central else { return }
         stopScan(); linkState = .connecting; peripheral.delegate = self; central.connect(peripheral)
     }
 
@@ -73,7 +107,7 @@ final class MeshService: NSObject, ObservableObject, CBCentralManagerDelegate, C
     }
 
     func disconnect() {
-        if let id = connectedPeerID, let peripheral = peripherals[id] { central.cancelPeripheralConnection(peripheral) }
+        if let id = connectedPeerID, let peripheral = peripherals[id] { central?.cancelPeripheralConnection(peripheral) }
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
