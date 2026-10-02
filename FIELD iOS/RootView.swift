@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
@@ -53,6 +54,7 @@ struct RootView: View {
         .toolbarBackground(FieldTheme.panel, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
         .background(FieldTheme.background.ignoresSafeArea())
+        .onAppear { Logger(subsystem: "com.fieldos.native", category: "render").notice("FIELD_ROOT_TABHOST_APPEARED") }
         // FIELD_iOSApp owns the single location -> track recorder subscription.
         .onChange(of: state.selectedTab) { _, next in
             activatedTabs.insert(next)

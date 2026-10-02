@@ -124,19 +124,16 @@ jobs:
           device=sys.argv[1]
           app="build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app"
           subprocess.run(["xcrun","simctl","install",device,app],check=True,timeout=150)
-          for name,command in (
-              ("location pregrant", ["xcrun","simctl","privacy",device,"grant","location","com.fieldos.native"]),
-              ("clean screenshot status bar", ["xcrun","simctl","status_bar",device,"override","--time","9:41","--wifiBars","3","--batteryState","charged","--batteryLevel","100"])
-          ):
-              try:
-                  result=subprocess.run(command,capture_output=True,text=True,timeout=20)
-                  print(f"{name}: exit {result.returncode}: {result.stdout[-300:]} {result.stderr[-300:]}",flush=True)
-              except subprocess.TimeoutExpired:
-                  print(f"{name}: timed out, proceeding without cosmetic simulator setting.",flush=True)
+          # All screenshot launches use -FIELDRenderOnly, which never requests
+          # hardware permissions. Do not invoke CoreSimulator privacy/status_bar
+          # here: these commands have hung CoreSimulatorService on free hosted
+          # Intel runners and then even the standalone launch probe times out.
+          print("Simulator app installed; using render-only launch arguments for permission-free UI capture.",flush=True)
           PY
       - name: Capture real native dashboard, map and route planner
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
-        timeout-minutes: 9
+        # Five staged screenshots plus a slow Intel sim can exceed nine minutes.
+        timeout-minutes: 12
         shell: bash
         run: |
           set -euo pipefail
