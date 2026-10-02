@@ -28,6 +28,8 @@ plist={
     'LSRequiresIPhoneOS': True,
     'MinimumOSVersion': '17.0',
     'CFBundleSupportedPlatforms': ['iPhoneSimulator'],
+    'UIDeviceFamily': [1],
+    'UILaunchScreen': {},
 }
 with (out / 'Info.plist').open('wb') as f:
     plistlib.dump(plist,f)
