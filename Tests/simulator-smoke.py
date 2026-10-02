@@ -88,9 +88,9 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
         ended, note = bounded(
             ["xcrun", "simctl", "terminate", device, bundle], seconds=22)
         output_path.write_text(f"Prior-stage termination exit={ended}: {note}\n")
-        if ended == 124:
+        if ended != 0:
             capture_crashes(device, label)
-            print(f"{label}: simulator could not terminate previous stage", flush=True)
+            print(f"{label}: simulator could not terminate previous stage (code={ended}); refusing stale screenshot", flush=True)
             return False
         time.sleep(3)
     command = ["xcrun", "simctl", "launch", device, bundle, *args]
