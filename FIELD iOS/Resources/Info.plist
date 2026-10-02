@@ -13,6 +13,7 @@
     <key>CFBundleVersion</key><string>8</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>NSBluetoothAlwaysUsageDescription</key><string>FIELD / OS uses Bluetooth to discover and communicate with compatible field and Meshtastic devices.</string>
+    <key>NSMotionUsageDescription</key><string>FIELD / OS uses motion-based altitude and air-pressure readings for local field navigation and sensor displays.</string>
     <key>NSLocationWhenInUseUsageDescription</key><string>FIELD / OS uses your location for maps, route navigation, altitude, track recording, and return-to-trail guidance.</string>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key>
