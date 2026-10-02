@@ -41,7 +41,8 @@ struct FieldRoute {
         let routePoints = Data("""
         <gpx><rte><rtept lat="40" lon="-72"/><rtept lat="41" lon="-73"/></rte></gpx>
         """.utf8)
-        assert(try service.parse(data: routePoints).points.count == 2)
+        let parsedRoutePoints = try service.parse(data: routePoints)
+        assert(parsedRoutePoints.points.count == 2)
         do {
             _ = try service.parse(data: Data(repeating: 65, count: GPXService.maxBytes + 1))
             fatalError("Oversize GPX accepted")
