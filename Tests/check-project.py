@@ -12,4 +12,6 @@ assert 'https://github.com/maplibre/maplibre-gl-native-distribution' in project
 assert 'J30000000000000000000001' in project
 with Path('FIELD iOS/Resources/Info.plist').open('rb') as stream: info=plistlib.load(stream)
 assert info['CFBundleShortVersionString']=='0.8' and info['CFBundleVersion']=='8'
+for required_key in ('NSLocationWhenInUseUsageDescription', 'NSBluetoothAlwaysUsageDescription', 'NSMotionUsageDescription'):
+    assert info.get(required_key), f'Missing iOS privacy description: {required_key}'
 print(f'PASS: all {len(files)} Swift files uniquely present in Xcode, MapLibre SPM product linked, Info.plist version 0.8')
