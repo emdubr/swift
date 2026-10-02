@@ -147,7 +147,9 @@ def main() -> int:
         return 1
     if not launch(device, "02-native-dashboard", []):
         return 2
-    print("Both minimal SwiftUI and full dashboard launched and stayed alive.", flush=True)
+    if not launch(device, "03-native-map", ["-FIELDPreviewMap"]):
+        return 4
+    print("Standalone SwiftUI, minimal app, native dashboard and native map all launched.", flush=True)
     return 0
 
 
