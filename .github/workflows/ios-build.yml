@@ -33,6 +33,15 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/DerivedData/SourcePackages
+            ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('FIELD iOS.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ios-spm-${{ runner.os }}-
       - name: Validate Foundation tests and project references
         run: bash Tests/run-all-tests.sh
       - name: Build for iPhone Simulator without signing
@@ -61,6 +70,35 @@ jobs:
           name: FIELD-iOS-simulator
           path: build/FIELD-iOS-simulator.zip
           if-no-files-found: error
+          retention-days: 3
+      - name: Capture iPhone UI preview (best effort)
+        continue-on-error: true
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/screenshots
+          DEVICE="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; ids=[x["udid"] for runtime,devices in sorted(d.items()) if "iOS" in runtime for x in devices if x.get("isAvailable") and "iPhone" in x.get("name","")]; print(ids[-1] if ids else "")')"
+          if [[ -z "$DEVICE" ]]; then
+            echo "No available iPhone simulator runtime; preview skipped."
+            exit 0
+          fi
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" \
+            'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
+          xcrun simctl privacy "$DEVICE" grant location com.fieldos.native || true
+          xcrun simctl launch "$DEVICE" com.fieldos.native
+          sleep 6
+          xcrun simctl io "$DEVICE" screenshot build/screenshots/FIELD-iOS-home.png
+          xcrun simctl shutdown "$DEVICE" || true
+      - name: Upload iPhone UI preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-ui-preview
+          path: build/screenshots/*.png
+          if-no-files-found: ignore
           retention-days: 3
       - name: Upload build diagnostics
         if: always()
