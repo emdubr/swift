@@ -55,7 +55,7 @@ def still_alive(pid: int) -> bool:
 def capture_crashes(device: str, label: str) -> None:
     ROOT.joinpath(label + "-host-log.txt").write_text(
         bounded(["log", "show", "--last", "3m", "--style", "compact",
-                 "--predicate", 'process == "FIELD iOS" OR eventMessage CONTAINS[c] "com.fieldos.native"'],
+                 "--predicate", 'process == "FIELD iOS" OR subsystem == "com.fieldos.native" OR eventMessage CONTAINS[c] "com.fieldos.native"'],
                 seconds=12)[1]
     )
     reports = [
