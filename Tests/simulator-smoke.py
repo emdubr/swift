@@ -100,7 +100,7 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
             output_file.write("\nLAUNCH EXCEPTION: " + str(error) + "\n")
 
     output = output_path.read_text(errors="replace")
-    pid = pid_from_output(output)
+    pid = pid_from_output(output, bundle=bundle)
     print(f"{label}: simctl exit={code}, PID={pid}, output={output[-1500:]}", flush=True)
     if code == 0 and pid:
         # A launch can succeed but the app may immediately exit/crash. Give the
