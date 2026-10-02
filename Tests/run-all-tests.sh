@@ -10,4 +10,11 @@ swiftc 'FIELD iOS/Services/FieldHandoff.swift' Tests/FieldHandoffTests.swift -o 
 "$tmp/handoff-test"
 swiftc 'FIELD iOS/Services/GPXService.swift' Tests/GPXTests.swift -o "$tmp/gpx-test"
 "$tmp/gpx-test"
+if [[ "$(uname -s)" == Darwin ]]; then
+  swiftc 'FIELD iOS/Models/FieldModels.swift' \
+    'FIELD iOS/Services/RouteEngine.swift' \
+    'FIELD iOS/Services/TrailNetworkService.swift' \
+    Tests/TrailNetworkTests.swift -o "$tmp/trail-test"
+  "$tmp/trail-test"
+fi
 python3 Tests/check-project.py
