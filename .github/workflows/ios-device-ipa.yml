@@ -1,0 +1,70 @@
+name: Free unsigned iPhone IPA
+
+# Standard GitHub macOS runners are free on PUBLIC repositories.
+# Never use larger/billable runners, paid signing, or third-party build services.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'FIELD iOS/**'
+      - 'FIELD iOS.xcodeproj/**'
+      - '.github/workflows/ios-device-ipa.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: free-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-15
+    timeout-minutes: 22
+    steps:
+      - name: Check out the separate Swift project
+        uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build unsigned iPhone device app (no Apple account or secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild \
+            -project 'FIELD iOS.xcodeproj' \
+            -scheme 'FIELD iOS' \
+            -configuration Debug \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build/device-build.log
+      - name: Package an unsigned IPA for free local Apple ID signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='build/DerivedData/Build/Products/Debug-iphoneos/FIELD iOS.app'
+          test -d "$APP"
+          mkdir -p build/ipa/Payload
+          ditto "$APP" 'build/ipa/Payload/FIELD iOS.app'
+          (cd build/ipa && zip -q -r ../FIELD-iOS-unsigned.ipa Payload)
+          unzip -t build/FIELD-iOS-unsigned.ipa | tail -n 2
+          test -s build/FIELD-iOS-unsigned.ipa
+      - name: Upload unsigned iPhone IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-unsigned-iPhone-IPA
+          path: build/FIELD-iOS-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload build errors on failure only
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-IPA-build-errors
+          path: build/device-build.log
+          if-no-files-found: ignore
+          retention-days: 1
