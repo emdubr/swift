@@ -14,9 +14,11 @@ assert 'J30000000000000000000001' in project
 # SPM dynamic xcframework and a build can pass but the simulator can SIGABRT
 # during dyld linking when these @rpath entries are absent.
 for config_id in ("G30000000000000000000001", "G30000000000000000000002"):
-    match = re.search(re.escape(config_id) + r' = \\{isa = XCBuildConfiguration; buildSettings = \\{(.*?)\\}; name = ', project, re.S)
-    assert match, f'Cannot locate app build config {config_id}'
-    settings = match.group(1)
+    marker = config_id + " = {isa = XCBuildConfiguration; buildSettings = {"
+    begin = project.find(marker)
+    assert begin >= 0, f'Cannot locate app build config {config_id}'
+    finish = project.index("}; name = ", begin)
+    settings = project[begin:finish]
     assert 'LD_RUNPATH_SEARCH_PATHS' in settings
     assert '@executable_path/Frameworks' in settings
     assert '@loader_path/Frameworks' in settings
