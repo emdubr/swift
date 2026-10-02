@@ -28,3 +28,9 @@ Open https://github.com/emdubr/swift/actions/workflows/ios-build.yml, select **R
 The workflow runs the Foundation regression tests and compiles the complete iOS app with Xcode on a standard macOS runner. No Apple account, signing secrets, or local Mac is needed. Standard hosted runner execution is free for this public repository. No repository visibility or billing settings are changed. Builds cancel older runs on the same branch and time out after 25 minutes.
 
 After a successful run, download **FIELD-iOS-simulator** from the run's Artifacts section. The contained app runs in an Apple iOS Simulator on a Mac; it cannot be installed on an iPhone or run directly on Windows. Diagnostics and artifacts expire after three days. TestFlight and device signing are separate setup steps; this workflow does not publish to the App Store.
+
+### Route editing and cloud preview
+
+The native route planner supports 30 levels of undo/redo, guarded GPX/JSON imports, and export of real `.gpx` files using the iOS Files picker. GPX parser regression cases run with the Foundation test suite.
+
+Cloud builds now restore cached Swift packages when possible. Once the unsigned simulator build succeeds, the workflow **attempts** to boot an iPhone simulator and capture a home-screen screenshot in the optional `FIELD-iOS-ui-preview` artifact. This allows Windows users to inspect the interface without a local Mac when a compatible simulator runtime is present on GitHub's hosted runner. A screenshot does not validate physical-iPhone hardware, background behavior, or map tiles.
