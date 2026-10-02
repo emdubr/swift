@@ -79,29 +79,57 @@ def capture_crashes(device: str, label: str) -> None:
 
 
 def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bool:
-    command = ["xcrun", "simctl", "launch", "--terminate-running-process",
-               device, bundle, *args]
     output_path = ROOT / (label + "-launch.txt")
-    try:
-        with output_path.open("w") as output_file:
-            # Important: simctl sometimes prints a PID and THEN hangs until
-            # CoreSimulator's app-launch handshake eventually times out.
-            # subprocess.run(timeout) stops it instead of losing diagnostics.
-            result = subprocess.run(command, stdout=output_file,
-                                    stderr=subprocess.STDOUT, timeout=25)
-        code = result.returncode
-    except subprocess.TimeoutExpired:
-        code = 124
-        with output_path.open("a") as output_file:
-            output_file.write("\nSIMCTL LAUNCH HANDSHAKE TIMED OUT AFTER 25 SECONDS\n")
-    except OSError as error:
-        code = 126
-        with output_path.open("a") as output_file:
-            output_file.write("\nLAUNCH EXCEPTION: " + str(error) + "\n")
-
-    output = output_path.read_text(errors="replace")
-    pid = pid_from_output(output, bundle=bundle)
-    print(f"{label}: simctl exit={code}, PID={pid}, output={output[-1500:]}", flush=True)
+    output_path.write_text("")
+    # `simctl launch --terminate-running-process` has stalled even on the
+    # FIRST launch on GitHub's free hosted Intel runner. End prior stages
+    # explicitly so a new launch cannot silently reuse an old screenshot.
+    if label != "01-minimal-probe":
+        ended, note = bounded(
+            ["xcrun", "simctl", "terminate", device, bundle], seconds=22)
+        output_path.write_text(f"Prior-stage termination exit={ended}: {note}\n")
+        if ended == 124:
+            capture_crashes(device, label)
+            print(f"{label}: simulator could not terminate previous stage", flush=True)
+            return False
+        time.sleep(3)
+    command = ["xcrun", "simctl", "launch", device, bundle, *args]
+    code = 126
+    pid = None
+    # Cold bootstatus can finish while SpringBoard is still accepting app
+    # registrations. Retry ONLY failed launch handshakes, never fake a
+    # successful foreground from a PID that simctl did not acknowledge.
+    for attempt in range(3):
+        try:
+            with output_path.open("a") as output_file:
+                output_file.write(f"Launch attempt {attempt + 1}\\n")
+                output_file.flush()
+                result = subprocess.run(command, stdout=output_file,
+                                        stderr=subprocess.STDOUT, timeout=38)
+            code = result.returncode
+        except subprocess.TimeoutExpired:
+            code = 124
+            with output_path.open("a") as output_file:
+                output_file.write("SIMCTL LAUNCH HANDSHAKE TIMED OUT AFTER 38 SECONDS\\n")
+        except OSError as error:
+            code = 126
+            with output_path.open("a") as output_file:
+                output_file.write("LAUNCH EXCEPTION: " + str(error) + "\\n")
+        output = output_path.read_text(errors="replace")
+        # Check only the latest launch attempt, not a stale PID from a
+        # previous, timed-out attempt.
+        latest = output.rsplit("Launch attempt ", 1)[-1]
+        pid = pid_from_output(latest, bundle=bundle)
+        print(f"{label}: attempt {attempt+1}/3, simctl exit={code}, PID={pid}, "
+              f"output={latest[-600:]}", flush=True)
+        if code == 0 and pid:
+            break
+        if attempt < 2:
+            time.sleep(14)
+    if code != 0 or pid is None:
+        capture_crashes(device, label)
+        print(f"{label}: launch never acknowledged by simulator", flush=True)
+        return False
     if code == 0 and pid:
         # Distinguish a slow CoreSimulator foreground transition from a white
         # native screen. This delay is only for cloud screenshots, never for UI.
@@ -110,7 +138,7 @@ def launch(device: str, label: str, args: list[str], bundle: str = BUNDLE) -> bo
             bounded(["ps", "-p", str(pid), "-o", "pid=,comm="], seconds=4)[1]
         )
         alive = still_alive(pid)
-        print(f"{label}: alive after 7 seconds={alive}", flush=True)
+        print(f"{label}: alive after foreground settle={alive}", flush=True)
         if alive:
             screenshot = ROOT / (label + ".png")
             evidence = ROOT / (label + "-render-verification.txt")
