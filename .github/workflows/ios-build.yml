@@ -33,6 +33,15 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+      - name: Restore Swift package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/DerivedData/SourcePackages
+            ~/Library/Caches/org.swift.swiftpm
+          key: ios-spm-${{ runner.os }}-${{ hashFiles('FIELD iOS.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ios-spm-${{ runner.os }}-
       - name: Validate Foundation tests and project references
         run: bash Tests/run-all-tests.sh
       - name: Build for iPhone Simulator without signing
@@ -62,6 +71,42 @@ jobs:
           path: build/FIELD-iOS-simulator.zip
           if-no-files-found: error
           retention-days: 3
+      - name: Capture iPhone UI preview (manual runs only)
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
+        continue-on-error: true
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/screenshots
+          DEVICE="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; ids=[x["udid"] for runtime,devices in sorted(d.items()) if "iOS" in runtime for x in devices if x.get("isAvailable") and "iPhone" in x.get("name","")]; print(ids[-1] if ids else "")')"
+          if [[ -z "$DEVICE" ]]; then
+            echo "No iPhone Simulator runtime installed on the GitHub runner."
+            exit 0
+          fi
+          trap 'xcrun simctl shutdown "$DEVICE" || true' EXIT
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" \
+            'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
+          # Capture launch failures for analysis instead of reporting a silent,
+          # misleading success with no screenshot artifact.
+          if ! xcrun simctl launch "$DEVICE" com.fieldos.native > build/screenshots/launch.txt 2>&1; then
+            echo "The native app failed to launch. See UI diagnostics."
+            xcrun simctl spawn "$DEVICE" log show --last 3m --style compact \
+              --predicate 'process == "FIELD iOS"' > build/screenshots/runtime-log.txt 2>&1 || true
+            exit 1
+          fi
+          sleep 4
+          xcrun simctl io "$DEVICE" screenshot build/screenshots/FIELD-iOS-home.png
+      - name: Upload iPhone UI preview and launch diagnostics
+        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIELD-iOS-ui-preview-and-diagnostics
+          path: build/screenshots/*
+          if-no-files-found: warn
+          retention-days: 1
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4

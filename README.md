@@ -2,6 +2,9 @@
 
 This project is completely separate from `emdubr/field-os`. No Swift sources were pushed into the web repo.
 
+**Windows/iPhone quick start:** The GitHub `FIELD-iOS-simulator` artifact cannot run on Windows or be installed on your phone. Use the [free unsigned iPhone IPA workflow](https://github.com/emdubr/swift/actions/workflows/ios-device-ipa.yml) and follow [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md). The IPA uses a standard public GitHub macOS runner; sign it locally on Windows with your own free Apple ID using Sideloadly. Never upload your Apple ID or signing credentials to GitHub.
+
+
 ## New in 0.8
 
 - **Local PMTiles rendering integration:** added MapLibre Native 6.28+ through Swift Package Manager, `pmtiles://file://` style generation for imported PMTiles v3 raster/vector archives, live UI toggle between local MapLibre and Apple MapKit, user location and route/waypoint annotations. Selected local packs contain no online tile URLs in the generated style. The style generator offers common OSM vector source layers and a manual layer-ID override. Vector styling is basic; it is not equivalent to all publisher-defined cartography. Actual map rendering has not been verified against the Apple SDK or on-device.
@@ -28,3 +31,9 @@ Open https://github.com/emdubr/swift/actions/workflows/ios-build.yml, select **R
 The workflow runs the Foundation regression tests and compiles the complete iOS app with Xcode on a standard macOS runner. No Apple account, signing secrets, or local Mac is needed. Standard hosted runner execution is free for this public repository. No repository visibility or billing settings are changed. Builds cancel older runs on the same branch and time out after 25 minutes.
 
 After a successful run, download **FIELD-iOS-simulator** from the run's Artifacts section. The contained app runs in an Apple iOS Simulator on a Mac; it cannot be installed on an iPhone or run directly on Windows. Diagnostics and artifacts expire after three days. TestFlight and device signing are separate setup steps; this workflow does not publish to the App Store.
+
+### Route editing and cloud preview
+
+The native route planner supports 30 levels of undo/redo, guarded GPX/JSON imports, and export of real `.gpx` files using the iOS Files picker. GPX parser regression cases run with the Foundation test suite.
+
+Cloud builds restore cached Swift packages when possible. For a screenshot, manually run the **iOS cloud build** workflow on `main`. Its optional simulator launch saves `FIELD-iOS-ui-preview-and-diagnostics`: a screenshot if native startup works, or useful launch diagnostics if it fails. Routine pushes skip simulator boots, and a simulator screenshot cannot validate device hardware or offline maps.
