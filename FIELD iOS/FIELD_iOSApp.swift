@@ -36,6 +36,8 @@ struct FIELD_iOSApp: App {
     // Only the CI runner opts into this with a launch argument. It never replaces
     // the normal app launched from an iPhone's Home Screen.
     private let startupProbe = ProcessInfo.processInfo.arguments.contains("-FIELDStartupProbe")
+    // Cloud screenshot-only navigation. Never alters production launch behavior.
+    private let previewMap = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewMap")
 
     var body: some Scene {
         WindowGroup {
@@ -57,6 +59,7 @@ struct FIELD_iOSApp: App {
                     .task {
                         print("FIELD_BOOT_LOADING_LOCAL_DATA")
                         await appState.load()
+                        if previewMap { appState.selectedTab = .map }
                         print("FIELD_BOOT_LOCAL_DATA_READY")
                         // Let the first SwiftUI frame render before initiating permissions
                         // or the motion pipeline. These aren't required for launch.
