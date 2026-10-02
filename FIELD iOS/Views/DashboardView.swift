@@ -261,7 +261,7 @@ struct DashboardView: View {
 
     private var readinessCard: some View {
         DisclosureGroup(isExpanded: $showReadiness) {
-            ReadinessView()
+            ReadinessView(embedded: true)
                 .padding(.top, 12)
         } label: {
             VStack(alignment: .leading, spacing: 9) {
