@@ -12,12 +12,14 @@ struct RoutePlannerView: View {
     @State private var undoStack: [FieldRoute] = []
     @State private var redoStack: [FieldRoute] = []
     @State private var exporting = false
+    @State private var didInitializeDraft = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
                     routeMap
+                    quickMetrics
                     routeEditor
                     metricsPanel
                     terrainRiskPanel
@@ -25,9 +27,21 @@ struct RoutePlannerView: View {
                 }.padding(14)
             }
             .background(FieldTheme.background)
-            .navigationTitle("Route Planner")
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom, spacing: 0) { editorDock }
+            .navigationTitle("ROUTE PLANNER")
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear { if let active = state.activeRoute { draft = active; undoStack = []; redoStack = [] } }
+            .onAppear {
+                // A retained tab must not discard an unsaved mobile draft
+                // every time someone switches over to the map and back.
+                guard !didInitializeDraft else { return }
+                didInitializeDraft = true
+                if let active = state.activeRoute {
+                    draft = active
+                    undoStack = []
+                    redoStack = []
+                }
+            }
             .fileExporter(isPresented: $exporting, document: GPXDocument(xml: GPXService.export(route: draft)),
                           contentType: UTType(filenameExtension: "gpx") ?? .xml,
                           defaultFilename: draft.name.replacingOccurrences(of: "/", with: "-") + ".gpx") { result in
@@ -72,6 +86,57 @@ struct RoutePlannerView: View {
         }
     }
 
+    private var quickMetrics: some View {
+        let metrics = RouteEngine.metrics(for: draft)
+        return HStack(spacing: 7) {
+            MetricTile(label: "DISTANCE", value: String(format: "%.2f mi", metrics.distanceMiles))
+            MetricTile(label: "ASCENT", value: String(format: "%.0f ft", metrics.ascentFeet))
+            MetricTile(label: "EST. TIME", value: metrics.estimatedSeconds.fieldDuration)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    // Primary controls remain reachable while the user pans or taps the map.
+    // safeAreaInset places them above (not on top of) the system tab bar.
+    private var editorDock: some View {
+        HStack(spacing: 9) {
+            Button { undo() } label: {
+                Image(systemName: "arrow.uturn.backward")
+                    .frame(width: 48, height: 48)
+                    .background(FieldTheme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .disabled(undoStack.isEmpty)
+            .accessibilityLabel("Undo route edit")
+
+            Button { redo() } label: {
+                Image(systemName: "arrow.uturn.forward")
+                    .frame(width: 48, height: 48)
+                    .background(FieldTheme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .disabled(redoStack.isEmpty)
+            .accessibilityLabel("Redo route edit")
+
+            Button {
+                state.saveRoute(draft)
+            } label: {
+                Label("SAVE ROUTE", systemImage: "square.and.arrow.down")
+                    .font(.caption.bold().monospaced())
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(FieldTheme.background)
+                    .background(FieldTheme.accent, in: RoundedRectangle(cornerRadius: 12))
+            }
+            .accessibilityHint("Save the current draft as the active route")
+        }
+        .buttonStyle(.plain)
+        .tint(FieldTheme.accent)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(FieldTheme.background.opacity(0.97))
+        .overlay(alignment: .top) {
+            Rectangle().fill(FieldTheme.border).frame(height: 1)
+        }
+    }
+
     private var routeEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
             FieldHeader(title: "Route definition", subtitle: "\(draft.points.count) POINTS")
@@ -81,7 +146,8 @@ struct RoutePlannerView: View {
             }.pickerStyle(.menu)
             TextField("Notes", text: $draft.notes, axis: .vertical).textFieldStyle(.roundedBorder)
             HStack {
-                Button("USE GPS") { addCurrentLocation() }.disabled(draft.points.count >= GPXService.maxPoints)
+                Button("USE GPS") { addCurrentLocation() }
+                    .disabled(location.location == nil || draft.points.count >= GPXService.maxPoints)
                 Button("UNDO") { undo() }.disabled(undoStack.isEmpty)
                 Button("REDO") { redo() }.disabled(redoStack.isEmpty)
             }.buttonStyle(TerminalButtonStyle())
@@ -103,12 +169,7 @@ struct RoutePlannerView: View {
     private var metricsPanel: some View {
         let m = RouteEngine.metrics(for: draft)
         return VStack(alignment: .leading, spacing: 9) {
-            FieldHeader(title: "Analysis", subtitle: m.difficulty.rawValue)
-            HStack(spacing: 8) {
-                MetricTile(label: "Distance", value: String(format: "%.2f mi", m.distanceMiles))
-                MetricTile(label: "Gain", value: String(format: "%.0f ft", m.ascentFeet))
-                MetricTile(label: "ETA", value: m.estimatedSeconds.fieldDuration)
-            }
+            FieldHeader(title: "Elevation & terrain", subtitle: m.difficulty.rawValue)
             HStack(spacing: 8) {
                 MetricTile(label: "Max grade", value: String(format: "%.0f%%", m.maxGradePercent))
                 MetricTile(label: "Terrain", value: draft.terrain.rawValue)
@@ -142,10 +203,8 @@ struct RoutePlannerView: View {
 
     private var actionPanel: some View {
         VStack(spacing: 10) {
-            HStack {
-                Button("SAVE ACTIVE") { state.saveRoute(draft) }
-                Button("IMPORT GPX") { importing = true }
-            }.buttonStyle(TerminalButtonStyle())
+            Button("IMPORT GPX") { importing = true }
+                .buttonStyle(TerminalButtonStyle())
             if draft.points.count >= 2 {
                 Button("EXPORT .GPX FILE") { exporting = true }
                     .buttonStyle(TerminalButtonStyle())

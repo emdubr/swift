@@ -93,29 +93,57 @@ jobs:
           path: build/FIELD-iOS-simulator.zip
           if-no-files-found: error
           retention-days: 1
-      - name: Verify minimal SwiftUI and full FIELD/OS startup (opt-in)
+      - name: Boot and install free iPhone simulator for UI screenshots
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
-        timeout-minutes: 7
+        timeout-minutes: 12
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p build/screenshots
           DEVICE="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; ids=[x["udid"] for runtime,devices in sorted(d.items()) if "iOS" in runtime for x in devices if x.get("isAvailable") and "iPhone" in x.get("name","")]; print(ids[-1] if ids else "")')"
           if [[ -z "$DEVICE" ]]; then
-            echo "No free standard-runner iPhone Simulator runtime is installed."
+            echo "No standard-runner iPhone Simulator runtime is installed."
             exit 1
           fi
-          echo "Testing iOS Simulator device: $DEVICE"
-          trap 'xcrun simctl shutdown "$DEVICE" || true' EXIT
+          printf '%s\n' "$DEVICE" > build/screenshots/simulator-device-id.txt
+          echo "Booting simulator before starting the screenshot timeout: $DEVICE"
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          xcrun simctl install "$DEVICE" \
-            'build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
-          # Suppress first-run permission overlays so screenshots show actual SwiftUI.
-          # A device build still requests the user's consent normally.
-          xcrun simctl privacy "$DEVICE" grant location com.fieldos.native || true
-          xcrun simctl status_bar "$DEVICE" override --time "9:41" --wifiBars 3 --batteryState charged --batteryLevel 100 || true
-          python3 Tests/simulator-smoke.py "$DEVICE" --runner-probe build/RunnerProbe.app
+          # GitHub's Intel macOS runner may spend 5+ minutes booting. Bound the
+          # subsequent installation independently, then take screenshots in
+          # a new step with a fresh timeout; neither changes production code.
+          python3 - "$DEVICE" <<'PY'
+          import subprocess,sys
+          device=sys.argv[1]
+          app="build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app"
+          subprocess.run(["xcrun","simctl","install",device,app],check=True,timeout=150)
+          for name,command in (
+              ("location pregrant", ["xcrun","simctl","privacy",device,"grant","location","com.fieldos.native"]),
+              ("clean screenshot status bar", ["xcrun","simctl","status_bar",device,"override","--time","9:41","--wifiBars","3","--batteryState","charged","--batteryLevel","100"])
+          ):
+              try:
+                  result=subprocess.run(command,capture_output=True,text=True,timeout=20)
+                  print(f"{name}: exit {result.returncode}: {result.stdout[-300:]} {result.stderr[-300:]}",flush=True)
+              except subprocess.TimeoutExpired:
+                  print(f"{name}: timed out, proceeding without cosmetic simulator setting.",flush=True)
+          PY
+      - name: Capture real native dashboard, map and route planner
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
+        timeout-minutes: 9
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVICE="$(cat build/screenshots/simulator-device-id.txt)"
+          python3 Tests/simulator-smoke.py "$DEVICE"
+      - name: Shutdown screenshot simulator
+        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if [[ -s build/screenshots/simulator-device-id.txt ]]; then
+            DEVICE="$(cat build/screenshots/simulator-device-id.txt)"
+            xcrun simctl shutdown "$DEVICE" || true
+          fi
       - name: Upload iPhone UI preview and launch diagnostics
         if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
         uses: actions/upload-artifact@v4

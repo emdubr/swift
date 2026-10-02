@@ -1,4 +1,4 @@
-# FIELD / OS — independent native iPhone project (0.8)
+# FIELD / OS — independent native iPhone project (0.9)
 
 This project is completely separate from `emdubr/field-os`. No Swift sources were pushed into the web repo.
 
