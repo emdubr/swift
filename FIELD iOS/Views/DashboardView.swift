@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 // The home screen is a fast, native field console. The contour artwork is
 // decorative, never presented as a geographic map or as offline coverage.
@@ -60,6 +61,7 @@ struct DashboardView: View {
                 }
             }
             .navigationDestination(for: AppModule.self) { ModuleDestination(module: $0) }
+            .onAppear { Logger(subsystem: "com.fieldos.native", category: "render").notice("FIELD_DASHBOARD_APPEARED") }
         }
     }
 
