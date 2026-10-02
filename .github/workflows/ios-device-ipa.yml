@@ -42,6 +42,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             build 2>&1 | tee build/device-build.log
+      - name: Verify iPhone MapLibre framework is bundled
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='build/DerivedData/Build/Products/Debug-iphoneos/FIELD iOS.app'
+          test -s "$APP/Frameworks/MapLibre.framework/MapLibre"
+          echo "PASS: unsigned iPhone app contains the required native mapping framework."
       - name: Package an unsigned IPA for free local Apple ID signing
         shell: bash
         run: |

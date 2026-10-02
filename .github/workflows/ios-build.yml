@@ -59,6 +59,23 @@ jobs:
             -resultBundlePath build/FIELD.xcresult \
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee build/xcodebuild.log
+      - name: Verify MapLibre is embedded and iOS dynamic loader can find it
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app'
+          test -s "$APP/Frameworks/MapLibre.framework/MapLibre"
+          BIN="$APP/FIELD iOS"
+          if [[ -f "$APP/FIELD iOS.debug.dylib" ]]; then
+            BIN="$APP/FIELD iOS.debug.dylib"
+          fi
+          xcrun otool -l "$BIN" > build/runtime-search-paths.txt
+          if ! grep -q '@executable_path/Frameworks' build/runtime-search-paths.txt && \
+             ! grep -q '@loader_path/Frameworks' build/runtime-search-paths.txt; then
+            echo "MapLibre is packaged, but $BIN does not search its Frameworks directory."
+            exit 1
+          fi
+          echo "PASS: MapLibre dynamic library is packaged and a framework rpath exists."
       - name: Package simulator app
         run: |
           ditto -c -k --sequesterRsrc --keepParent \

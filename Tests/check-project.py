@@ -10,6 +10,17 @@ expected=set(re.findall(r'(A300000000000000000000[0-9A-F]{2}) /\* .* in Sources 
 if with_sources!=expected: sys.exit('ERROR: unassigned/duplicate Source build phase refs '+str(with_sources^expected))
 assert 'https://github.com/maplibre/maplibre-gl-native-distribution' in project
 assert 'J30000000000000000000001' in project
+# Both app configurations must search the framework directory. MapLibre is an
+# SPM dynamic xcframework and a build can pass but the simulator can SIGABRT
+# during dyld linking when these @rpath entries are absent.
+for config_id in ("G30000000000000000000001", "G30000000000000000000002"):
+    match = re.search(re.escape(config_id) + r' = \\{isa = XCBuildConfiguration; buildSettings = \\{(.*?)\\}; name = ', project, re.S)
+    assert match, f'Cannot locate app build config {config_id}'
+    settings = match.group(1)
+    assert 'LD_RUNPATH_SEARCH_PATHS' in settings
+    assert '@executable_path/Frameworks' in settings
+    assert '@loader_path/Frameworks' in settings
+
 with Path('FIELD iOS/Resources/Info.plist').open('rb') as stream: info=plistlib.load(stream)
 assert info['CFBundleShortVersionString']=='0.8' and info['CFBundleVersion']=='8'
 for required_key in ('NSLocationWhenInUseUsageDescription', 'NSBluetoothAlwaysUsageDescription', 'NSMotionUsageDescription'):
