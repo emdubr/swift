@@ -36,4 +36,4 @@ After a successful run, download **FIELD-iOS-simulator** from the run's Artifact
 
 The native route planner supports 30 levels of undo/redo, guarded GPX/JSON imports, and export of real `.gpx` files using the iOS Files picker. GPX parser regression cases run with the Foundation test suite.
 
-Cloud builds now restore cached Swift packages when possible. Once the unsigned simulator build succeeds, the workflow **attempts** to boot an iPhone simulator and capture a home-screen screenshot in the optional `FIELD-iOS-ui-preview` artifact. This allows Windows users to inspect the interface without a local Mac when a compatible simulator runtime is present on GitHub's hosted runner. A screenshot does not validate physical-iPhone hardware, background behavior, or map tiles.
+Cloud builds restore cached Swift packages when possible. For a screenshot, manually run the **iOS cloud build** workflow on `main`. Its optional simulator launch saves `FIELD-iOS-ui-preview-and-diagnostics`: a screenshot if native startup works, or useful launch diagnostics if it fails. Routine pushes skip simulator boots, and a simulator screenshot cannot validate device hardware or offline maps.
