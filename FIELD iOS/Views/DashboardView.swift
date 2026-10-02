@@ -1,9 +1,10 @@
+import MapKit
 import SwiftUI
 import OSLog
 
-// The home screen is a fast, native field console. The contour artwork is
-// decorative, never presented as a geographic map or as offline coverage.
-// Actual maps initialize only after the user enters the Map tab.
+// Map-first mobile counterpart to the web console. The visible map is real
+// MapKit or an imported local MapLibre pack, never decorative/synthetic tiles.
+// Camera position changes only in response to explicit user commands.
 struct DashboardView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var location: LocationService
@@ -12,314 +13,562 @@ struct DashboardView: View {
     @EnvironmentObject private var track: TrackRecorder
     @EnvironmentObject private var checkIn: CheckInService
 
+    @State private var homeCamera: MapCameraPosition = .automatic
+    @State private var satellite = true
     @State private var showReadiness = false
     @State private var showDiagnostics = false
+    @State private var offlineStyleURL: URL?
+    @State private var offlineMapError: String?
+    @State private var offlineCenter: CLLocationCoordinate2D?
+    @State private var offlineZoom = 10.0
+    @State private var offlineCameraCommand: OfflineCameraCommand?
+
+    private var activePack: MapPack? { state.mapPacks.first(where: \.active) }
+    private var activePackID: String { activePack?.id.uuidString ?? "none" }
+    private var displayingLocalMap: Bool { state.settings.offlineMode && offlineStyleURL != nil }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    consoleHeader
-                    liveStatusStrip
-                    terrainEntry
-                    priorityCard
-                    actionGrid
-                    activeRouteCard
-                    readinessCard
-                    diagnosticsCard
-                    Text("FIELD / OS  •  NATIVE FIELD CONSOLE")
-                        .font(.caption2.monospaced())
-                        .tracking(1)
-                        .foregroundStyle(FieldTheme.dim.opacity(0.72))
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 12)
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-            }
-            .scrollIndicators(.hidden)
-            .background(FieldTheme.background.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("FIELD / OS")
-                        .font(.subheadline.bold().monospaced())
-                        .tracking(2)
-                        .foregroundStyle(FieldTheme.text)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        state.settings.offlineMode.toggle()
-                        state.persist()
-                    } label: {
-                        Image(systemName: state.settings.offlineMode ? "wifi.slash" : "wifi")
-                            .font(.subheadline.bold())
-                            .frame(width: 44, height: 42)
+            GeometryReader { viewport in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        commandHeader
+                        statusStrip
+                        safetyTicker
+                        terrainWorkspace(height: max(320, min(500, viewport.size.height * 0.59)))
+                        priorityAndLocation
+                        routeSummary
+                        utilityTray
                     }
-                    .tint(state.settings.offlineMode ? FieldTheme.amber : FieldTheme.accent)
-                    .accessibilityLabel(state.settings.offlineMode ? "Disable offline mode" : "Enable offline mode")
+                    .padding(.horizontal, 9)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+                }
+                .scrollIndicators(.hidden)
+                .background(FieldTheme.background.ignoresSafeArea())
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    commandDock
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
+            // Home supplies the web-console's own compact module dock.
+            // Other tabs keep their existing, accessible native tab bar.
+            .toolbar(.hidden, for: .tabBar)
             .navigationDestination(for: AppModule.self) { ModuleDestination(module: $0) }
-            .onAppear { Logger(subsystem: "com.fieldos.native", category: "render").notice("FIELD_DASHBOARD_APPEARED") }
-        }
-    }
-
-    private var consoleHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("TAP V2  /  EXPEDITION CONSOLE")
-                    .font(.caption2.bold().monospaced())
-                    .tracking(1.25)
-                    .foregroundStyle(FieldTheme.dim)
-                Text("YOUR FIELD,\nAT A GLANCE.")
-                    .font(.system(size: 25, weight: .heavy, design: .rounded))
-                    .tracking(0.25)
-                    .lineSpacing(0)
-                    .foregroundStyle(FieldTheme.text)
-                    .fixedSize(horizontal: false, vertical: true)
+            .onAppear {
+                Logger(subsystem: "com.fieldos.native", category: "render")
+                    .notice("FIELD_WEB_CONSOLE_DASHBOARD_VISIBLE")
             }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 8) {
-                StatusPill(text: state.settings.offlineMode ? "OFFLINE" : "LOCAL",
-                           tone: state.settings.offlineMode ? FieldTheme.amber : FieldTheme.accent)
-                Text(Date.now, format: .dateTime.hour().minute())
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(FieldTheme.dim)
+            .task(id: activePackID) {
+                offlineStyleURL = nil
+                offlineMapError = nil
+                guard let pack = activePack else { return }
+                do {
+                    let url = try await MapPackService.shared.localStyle(for: pack)
+                    let archive = try await MapPackService.shared.url(for: pack)
+                    let metadata = try PMTilesStyle.descriptor(fileURL: archive)
+                    offlineCenter = CLLocationCoordinate2D(
+                        latitude: metadata.centerLatitude,
+                        longitude: metadata.centerLongitude
+                    )
+                    offlineZoom = Double(max(metadata.minZoom, min(metadata.maxZoom,
+                        metadata.centerZoom == 0 ? 10 : metadata.centerZoom)))
+                    offlineStyleURL = url
+                } catch {
+                    offlineMapError = "Local map unavailable: \(error.localizedDescription)"
+                }
             }
         }
     }
 
-    private var liveStatusStrip: some View {
+    private var commandHeader: some View {
+        HStack(spacing: 12) {
+            Button { state.selectedTab = .more } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 41, height: 44)
+            }
+            .accessibilityLabel("Open field modules")
+            Spacer(minLength: 0)
+            Text("FIELD / OS")
+                .font(.system(size: 17, weight: .heavy, design: .monospaced))
+                .tracking(3.2)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button {
+                state.settings.offlineMode.toggle()
+                state.persist()
+            } label: {
+                Text(state.settings.offlineMode ? "OFFLINE" : "LOCAL")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(0.7)
+                    .padding(.horizontal, 9)
+                    .frame(height: 29)
+                    .overlay(Rectangle().stroke(
+                        state.settings.offlineMode ? FieldTheme.amber : FieldTheme.accent,
+                        lineWidth: 1
+                    ))
+            }
+            .accessibilityLabel(state.settings.offlineMode ? "Disable offline mode" : "Enable offline mode")
+            .frame(minWidth: 70)
+        }
+        .foregroundStyle(FieldTheme.text)
+        .padding(.horizontal, 8)
+        .frame(height: 49)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.9), lineWidth: 1))
+    }
+
+    private var statusStrip: some View {
         HStack(spacing: 0) {
-            ConsoleStatus(symbol: "location.fill", title: "GPS",
-                          value: gpsValue, tone: gpsTone)
-            Rectangle().fill(FieldTheme.border.opacity(0.5))
-                .frame(width: 1, height: 28)
-            ConsoleStatus(symbol: "dot.radiowaves.left.and.right", title: "MESH",
-                          value: meshValue, tone: mesh.linkState == .connected ? FieldTheme.accent : FieldTheme.amber)
-            Rectangle().fill(FieldTheme.border.opacity(0.5))
-                .frame(width: 1, height: 28)
-            ConsoleStatus(symbol: "figure.hiking", title: "TRACK",
-                          value: track.state.rawValue.uppercased(),
-                          tone: track.state == .recording ? FieldTheme.accent : FieldTheme.dim)
+            statusCell("location.north.line.fill", "GNSS", gpsValue, gpsTone)
+            statusDivider
+            statusCell("dot.radiowaves.left.and.right", "MESH", meshValue,
+                       mesh.linkState == .connected ? FieldTheme.accent : FieldTheme.amber)
+            statusDivider
+            statusCell("battery.75percent", "PHONE", batteryText, FieldTheme.accent)
+            statusDivider
+            statusCell("square.stack.3d.up", "MAPS",
+                       activePack == nil ? "NO PACK" : (state.settings.offlineMode ? "LOCAL" : "READY"),
+                       activePack == nil ? FieldTheme.amber : FieldTheme.accent)
         }
-        .padding(.vertical, 12)
-        .background(FieldTheme.panel, in: RoundedRectangle(cornerRadius: 13))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13)
-                .stroke(FieldTheme.border.opacity(0.55), lineWidth: 1)
-        }
+        .frame(height: 63)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.9), lineWidth: 1))
     }
 
-    private var terrainEntry: some View {
-        Button {
-            state.selectedTab = .map
-        } label: {
-            ZStack(alignment: .topLeading) {
-                TopographicLines()
-                    .allowsHitTesting(false)
-                LinearGradient(colors: [FieldTheme.panel, FieldTheme.panel.opacity(0.87), .clear],
-                               startPoint: .leading, endPoint: .trailing)
-                VStack(alignment: .leading, spacing: 10) {
-                    Label("TERRAIN / NAVIGATION", systemImage: "mountain.2")
-                        .font(.caption2.bold().monospaced())
-                        .tracking(1.2)
-                        .foregroundStyle(FieldTheme.accent)
-                    Spacer(minLength: 8)
-                    Text("OPEN THE MAP")
-                        .font(.system(.title3, design: .rounded, weight: .bold))
-                        .tracking(0.7)
-                        .foregroundStyle(FieldTheme.text)
-                    Text(mapEntrySubtitle)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(FieldTheme.dim)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 5) {
-                        Text("EXPLORE TERRAIN")
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(FieldTheme.background)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(FieldTheme.accent, in: Capsule())
-                }
-                .padding(17)
-            }
-            .frame(maxWidth: .infinity, minHeight: 185, maxHeight: 210, alignment: .leading)
-            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(FieldTheme.border, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open terrain map. " + mapEntrySubtitle)
+    private var statusDivider: some View {
+        Rectangle().fill(FieldTheme.border)
+            .frame(width: 1, height: 34)
     }
 
-    private var priorityCard: some View {
-        let current = priority
-        return HStack(alignment: .top, spacing: 11) {
-            Image(systemName: current.symbol)
-                .font(.headline)
-                .foregroundStyle(current.tone)
-                .frame(width: 32, height: 32)
-                .background(current.tone.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text("WHAT MATTERS NOW")
-                        .font(.caption2.bold().monospaced())
-                        .tracking(0.8)
-                        .foregroundStyle(FieldTheme.dim)
-                    Spacer(minLength: 4)
-                    Text(current.category)
-                        .font(.caption2.bold().monospaced())
-                        .foregroundStyle(current.tone)
-                }
-                Text(current.title)
-                    .font(.subheadline.bold())
-                    .foregroundStyle(FieldTheme.text)
-                Text(current.detail)
-                    .font(.caption)
+    private func statusCell(_ symbol: String, _ heading: String, _ value: String, _ tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 3) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(FieldTheme.accent)
+                Text(heading)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundStyle(FieldTheme.dim)
-                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 4) {
+                Circle().fill(tone).frame(width: 5, height: 5)
+                Text(value)
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(FieldTheme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.73)
             }
         }
-        .fieldPanel()
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .combine)
     }
 
-    private var actionGrid: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            FieldHeader(title: "Quick actions", subtitle: "READY WHEN YOU ARE")
-            HStack(spacing: 9) {
-                Button { state.selectedTab = .route } label: {
-                    FieldActionLabel(symbol: "point.topleft.down.to.point.bottomright.curvepath",
-                                     title: "PLAN ROUTE", subtitle: "Snap & save")
+    private var safetyTicker: some View {
+        HStack(spacing: 6) {
+            Circle().fill(gpsTone).frame(width: 5, height: 5)
+            Text(gpsValue == "FIX" ? "LIVE GPS FIX  //  MAP AND SENSOR DATA ARE DEVICE-SOURCED"
+                 : "GPS NOT VERIFIED  //  DO NOT RELY ON POSITION UNTIL A FIX IS AVAILABLE")
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+            Spacer(minLength: 0)
+            Text("WGS84")
+        }
+        .font(.system(size: 8, weight: .medium, design: .monospaced))
+        .tracking(0.1)
+        .foregroundStyle(FieldTheme.dim)
+        .padding(.horizontal, 8)
+        .frame(height: 25)
+    }
+
+    private func terrainWorkspace(height: CGFloat) -> some View {
+        ZStack {
+            terrainCanvas
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            LinearGradient(colors: [FieldTheme.background.opacity(0.48), .clear,
+                                    .clear, FieldTheme.background.opacity(0.86)],
+                           startPoint: .top, endPoint: .bottom)
+                .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    Image(systemName: "mountain.2.fill")
+                        .foregroundStyle(FieldTheme.accent)
+                    Text("TERRAIN MAP  //  FIELD GRID")
+                        .foregroundStyle(FieldTheme.text)
+                    Spacer(minLength: 2)
+                    Text(displayingLocalMap ? "LOCAL PMTILES" :
+                         state.settings.offlineMode ? "NO LOCAL MAP" : "APPLE MAPKIT")
+                        .foregroundStyle(displayingLocalMap ? FieldTheme.accent : FieldTheme.amber)
+                        .minimumScaleFactor(0.7)
                 }
-                NavigationLink(value: AppModule.navigation) {
-                    FieldActionLabel(symbol: "location.north.line.fill",
-                                     title: "NAVIGATE", subtitle: "Follow a route")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(height: 37)
+                .background(FieldTheme.panel.opacity(0.95))
+                .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
+
+                HStack(alignment: .top) {
+                    Button {
+                        if displayingLocalMap {
+                            state.selectedTab = .map
+                        } else if !state.settings.offlineMode {
+                            satellite.toggle()
+                        } else {
+                            state.selectedTab = .map
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.3.layers.3d")
+                            Text(displayingLocalMap ? "LOCAL" :
+                                 state.settings.offlineMode ? "IMPORT MAP" :
+                                 (satellite ? "SATELLITE" : "STANDARD"))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .frame(height: 36)
+                        .background(FieldTheme.panel.opacity(0.95))
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    }
+                    .accessibilityLabel("Change terrain map layers")
+                    Spacer(minLength: 8)
+                    VStack(spacing: 1) {
+                        mapTool("location.north.fill", "Center on current GPS fix",
+                                disabled: location.location == nil) { centerOnUser() }
+                        Rectangle().fill(FieldTheme.border).frame(height: 1)
+                        mapTool("point.topleft.down.to.point.bottomright.curvepath",
+                                "Fit loaded route", disabled: state.activeRoute == nil) { fitRoute() }
+                        Rectangle().fill(FieldTheme.border).frame(height: 1)
+                        mapTool("square.stack.3d.up", "Open full map and map layers") {
+                            state.selectedTab = .map
+                        }
+                    }
+                    .background(FieldTheme.panel.opacity(0.96))
+                    .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                }
+                .padding(9)
+                Spacer(minLength: 0)
+                HStack {
+                    Label(gpsValue == "FIX" ? "CURRENT FIX" : "MAP VIEW · NO VERIFIED GPS",
+                          systemImage: gpsValue == "FIX" ? "location.fill" : "location.slash")
+                    Spacer(minLength: 4)
+                    Button { state.selectedTab = .map } label: {
+                        HStack(spacing: 4) {
+                            Text("EXPAND MAP")
+                            Image(systemName: "arrow.up.right")
+                        }
+                        .foregroundStyle(FieldTheme.accent)
+                    }
+                }
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.text)
+                .padding(.horizontal, 9)
+                .frame(height: 35)
+                .background(FieldTheme.panel.opacity(0.96))
+            }
+        }
+        .frame(height: height)
+        .clipped()
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+    }
+
+    @ViewBuilder private var terrainCanvas: some View {
+        if state.settings.offlineMode, let offlineStyleURL {
+            OfflineMapLibreView(
+                styleURL: offlineStyleURL,
+                initialCenter: location.location?.coordinate
+                    ?? state.activeRoute?.points.first?.coordinate
+                    ?? offlineCenter
+                    ?? CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                initialZoom: offlineZoom,
+                route: state.activeRoute,
+                waypoints: state.waypoints,
+                command: offlineCameraCommand
+            )
+        } else if state.settings.offlineMode {
+            ZStack {
+                FieldTheme.panelRaised
+                VStack(spacing: 11) {
+                    Image(systemName: "square.stack.3d.up.slash")
+                        .font(.title2)
+                        .foregroundStyle(FieldTheme.amber)
+                    Text("OFFLINE MAP NOT READY")
+                        .font(.system(.headline, design: .monospaced))
+                    Text(offlineMapError ?? "Import a map pack before navigating without network access.")
+                        .font(.caption.monospaced())
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(FieldTheme.dim)
+                    Button("OPEN MAP MANAGER") { state.selectedTab = .map }
+                        .font(.caption.bold().monospaced())
+                        .foregroundStyle(FieldTheme.accent)
+                }
+                .padding(24)
+            }
+        } else {
+            Map(position: $homeCamera) {
+                UserAnnotation()
+                if let route = state.activeRoute, route.points.count > 1 {
+                    MapPolyline(coordinates: route.points.map(\.coordinate))
+                        .stroke(FieldTheme.accent, lineWidth: 4)
+                }
+                ForEach(state.waypoints) { waypoint in
+                    Annotation(waypoint.name, coordinate: waypoint.point.coordinate) {
+                        Image(systemName: waypoint.kind == .base ? "house.circle.fill" : "mappin.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(waypoint.kind == .hazard ? FieldTheme.danger : FieldTheme.amber)
+                    }
                 }
             }
-            .buttonStyle(.plain)
-            HStack(spacing: 9) {
+            .mapStyle(satellite ? .imagery(elevation: .realistic) :
+                      .standard(elevation: .realistic, emphasis: .muted))
+            .accessibilityLabel("Interactive live map. Expand for offline map management.")
+        }
+    }
+
+    private func mapTool(_ symbol: String, _ label: String,
+                         disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
+                .frame(width: 43, height: 43)
+        }
+        .disabled(disabled)
+        .accessibilityLabel(label)
+    }
+
+    private func centerOnUser() {
+        guard let fix = location.location, fix.horizontalAccuracy >= 0 else { return }
+        offlineCameraCommand = OfflineCameraCommand(coordinate: fix.coordinate, zoom: 14)
+        homeCamera = .region(MKCoordinateRegion(
+            center: fix.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.025, longitudeDelta: 0.025)
+        ))
+    }
+
+    private func fitRoute() {
+        guard let points = state.activeRoute?.points, !points.isEmpty,
+              let minLat = points.map(\.latitude).min(), let maxLat = points.map(\.latitude).max(),
+              let minLon = points.map(\.longitude).min(), let maxLon = points.map(\.longitude).max()
+        else { return }
+        let coordinate = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2,
+                                                longitude: (minLon + maxLon) / 2)
+        let latSpan = max(0.015, (maxLat - minLat) * 1.4)
+        let lonSpan = max(0.015, (maxLon - minLon) * 1.4)
+        offlineCameraCommand = OfflineCameraCommand(coordinate: coordinate,
+                                                    zoom: max(3, 15 - log2(latSpan / 0.015)))
+        homeCamera = .region(MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan)
+        ))
+    }
+
+    private var priorityAndLocation: some View {
+        HStack(alignment: .top, spacing: 0) {
+            let item = priority
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(item.tone)
+                    .frame(width: 27, height: 27)
+                    .background(item.tone.opacity(0.13))
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text("WHAT MATTERS NOW")
+                            .foregroundStyle(FieldTheme.dim)
+                        Spacer(minLength: 1)
+                        Text(item.category).foregroundStyle(item.tone)
+                    }
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    Text(item.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(FieldTheme.text)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(item.detail)
+                        .font(.system(size: 10))
+                        .foregroundStyle(FieldTheme.dim)
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Rectangle().fill(FieldTheme.border).frame(width: 1)
+            VStack(alignment: .leading, spacing: 7) {
+                Text("POSITION // WGS84")
+                    .foregroundStyle(FieldTheme.dim)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(latitudeText)
+                Text(longitudeText)
+                Text("ALT " + altitudeText)
+                Text(accuracyText)
+                    .foregroundStyle(gpsTone)
+            }
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .foregroundStyle(FieldTheme.text)
+            .padding(9)
+            .frame(width: 125, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, minHeight: 89, alignment: .top)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+    }
+
+    private var routeSummary: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                    .foregroundStyle(FieldTheme.accent)
+                Text("ROUTE SUMMARY")
+                    .foregroundStyle(FieldTheme.text)
+                Spacer(minLength: 2)
+                Text(state.activeRoute == nil ? "NO ROUTE" : "ROUTE LOADED")
+                    .foregroundStyle(FieldTheme.dim)
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            Rectangle().fill(FieldTheme.border).frame(height: 1)
+            HStack(spacing: 3) {
+                routeMetric("DISTANCE", distanceValue)
+                routeMetric("ASCENT", ascentValue)
+                routeMetric("EST. TIME", etaValue)
+                Button { state.selectedTab = .route } label: {
+                    HStack(spacing: 2) {
+                        Text("PLAN")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(FieldTheme.accent)
+                    .frame(width: 65, height: 39)
+                    .overlay(Rectangle().stroke(FieldTheme.accent, lineWidth: 1))
+                }
+                .accessibilityLabel("Open route planner")
+                .padding(.trailing, 6)
+            }
+            .padding(.vertical, 8)
+        }
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+        .padding(.top, 6)
+    }
+
+    private func routeMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(label)
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                .foregroundStyle(FieldTheme.dim)
+            Text(value)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 8)
+    }
+
+    private var utilityTray: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Text("FIELD MODULES")
+                    .foregroundStyle(FieldTheme.accent)
+                Spacer()
+                Text("DEVICE DATA ONLY // VERIFY BEFORE DEPARTURE")
+                    .foregroundStyle(FieldTheme.dim)
+            }
+            .font(.system(size: 8, weight: .medium, design: .monospaced))
+            .padding(.top, 11)
+            HStack(spacing: 7) {
                 NavigationLink(value: AppModule.returnFunctions) {
-                    FieldActionLabel(symbol: "arrow.uturn.backward",
-                                     title: "RETURN", subtitle: "Backtrack tools")
+                    utilityLink("arrow.uturn.backward", "RETURN TRAIL")
                 }
                 NavigationLink(value: AppModule.emergency) {
-                    FieldActionLabel(symbol: "cross.circle",
-                                     title: "SOS TOOLS", subtitle: "Emergency options",
-                                     tone: FieldTheme.danger)
+                    utilityLink("cross.circle", "SOS TOOLS", FieldTheme.danger)
                 }
             }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var activeRouteCard: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            FieldHeader(title: "Active route", subtitle: state.activeRoute == nil ? "NOT SET" : "LOADED")
-            if let route = state.activeRoute {
-                let metrics = RouteEngine.metrics(for: route)
-                Text(route.name)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(FieldTheme.text)
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    MetricTile(label: "DISTANCE", value: String(format: "%.1f mi", metrics.distanceMiles))
-                    MetricTile(label: "ASCENT", value: String(format: "%.0f ft", metrics.ascentFeet))
-                    MetricTile(label: "EST. TIME", value: metrics.estimatedSeconds.fieldDuration)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                        .font(.title2)
-                        .foregroundStyle(FieldTheme.dim)
-                        .frame(width: 36)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("No route loaded")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(FieldTheme.text)
-                        Text("Create or import a route for distance, ascent and ETA.")
-                            .font(.caption)
-                            .foregroundStyle(FieldTheme.dim)
-                    }
-                    Spacer(minLength: 2)
-                    Button {
-                        state.selectedTab = .route
-                    } label: {
-                        Image(systemName: "arrow.right")
-                            .frame(width: 44, height: 44)
-                            .background(FieldTheme.panelRaised, in: Circle())
-                    }
-                    .accessibilityLabel("Plan a route")
-                }
-            }
-        }
-        .fieldPanel()
-    }
-
-    private var readinessCard: some View {
-        DisclosureGroup(isExpanded: $showReadiness) {
-            ReadinessView(embedded: true)
-                .padding(.top, 12)
-        } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .firstTextBaseline) {
+            DisclosureGroup(isExpanded: $showReadiness) {
+                ReadinessView(embedded: true).padding(.top, 9)
+            } label: {
+                HStack {
                     Text("PREFLIGHT CHECKLIST")
-                        .font(.caption.bold().monospaced())
-                        .tracking(0.7)
-                        .foregroundStyle(FieldTheme.text)
                     Spacer()
-                    Text("\(state.readiness.completedCount)/\(state.readiness.totalCount) DONE")
-                        .font(.caption2.bold().monospaced())
+                    Text("\(state.readiness.completedCount)/\(state.readiness.totalCount)")
                         .foregroundStyle(FieldTheme.accent)
                 }
-                ProgressView(value: Double(state.readiness.completedCount),
-                             total: Double(max(1, state.readiness.totalCount)))
-                    .tint(FieldTheme.accent)
-                    .accessibilityLabel("Readiness checklist progress")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
             }
+            .padding(10)
+            .background(FieldTheme.panel)
+            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+            DisclosureGroup(isExpanded: $showDiagnostics) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("GNSS: " + gpsValue, systemImage: "location")
+                    Label("MESH: " + meshValue, systemImage: "dot.radiowaves.left.and.right")
+                    Label("MAP PACKS: \(state.mapPacks.count)", systemImage: "square.stack.3d.up")
+                    Label("TRACK: " + track.state.rawValue, systemImage: "figure.hiking")
+                }
+                .padding(.top, 9)
+            } label: {
+                Text("SENSORS / DIAGNOSTICS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+            }
+            .padding(10)
+            .background(FieldTheme.panel)
+            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         }
         .tint(FieldTheme.accent)
-        .fieldPanel()
+        .foregroundStyle(FieldTheme.text)
+        .buttonStyle(.plain)
     }
 
-    private var diagnosticsCard: some View {
-        DisclosureGroup(isExpanded: $showDiagnostics) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 7) {
-                    MetricTile(label: "ALTITUDE", value: altitudeText, detail: accuracyText)
-                    MetricTile(label: "BATTERY", value: batteryText,
-                               detail: sensor.snapshot.lowPowerMode ? "LOW POWER" : "IPHONE")
-                }
-                Divider().overlay(FieldTheme.border)
-                DiagnosticRow(symbol: "location", title: "iPhone location",
-                              detail: gpsValue, tone: gpsTone)
-                DiagnosticRow(symbol: "dot.radiowaves.left.and.right", title: "Mesh link",
-                              detail: meshValue,
-                              tone: mesh.linkState == .connected ? FieldTheme.accent : FieldTheme.dim)
-                DiagnosticRow(symbol: "square.stack.3d.up", title: "Offline map packs",
-                              detail: "\(state.mapPacks.count) imported",
-                              tone: state.mapPacks.contains(where: { $0.active }) ? FieldTheme.accent : FieldTheme.amber)
-                NavigationLink(value: AppModule.lost) {
-                    Label("Lost / recovery guidance", systemImage: "questionmark.diamond")
-                        .font(.caption.monospaced())
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
-                }
+    private func utilityLink(_ symbol: String, _ title: String,
+                             _ tone: Color = FieldTheme.accent) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .foregroundStyle(tone)
+            .frame(maxWidth: .infinity, minHeight: 39)
+            .background(FieldTheme.panel)
+            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+    }
+
+    private var commandDock: some View {
+        HStack(spacing: 5) {
+            dockButton("map", "MAP") { state.selectedTab = .map }
+            dockButton("point.topleft.down.to.point.bottomright.curvepath", "ROUTE") {
+                state.selectedTab = .route
             }
-            .padding(.top, 12)
-        } label: {
-            Label("SENSORS & DIAGNOSTICS", systemImage: "waveform.path.ecg")
-                .font(.caption.bold().monospaced())
-                .tracking(0.6)
-                .foregroundStyle(FieldTheme.text)
+            dockButton("dot.radiowaves.left.and.right", "COMMS") { state.selectedTab = .comms }
+            dockButton("square.grid.2x2", "TOOLS") { state.selectedTab = .more }
         }
-        .tint(FieldTheme.accent)
-        .fieldPanel()
+        .padding(.horizontal, 9)
+        .padding(.top, 6)
+        .padding(.bottom, 3)
+        .background(FieldTheme.background.opacity(0.99))
+        .overlay(alignment: .top) { FieldTheme.border.frame(height: 1) }
+    }
+
+    private func dockButton(_ symbol: String, _ title: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: symbol).font(.system(size: 17, weight: .medium))
+                Text(title)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+            }
+            .foregroundStyle(FieldTheme.accent)
+            .frame(maxWidth: .infinity, minHeight: 51)
+            .background(FieldTheme.panel)
+            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open " + title.lowercased())
     }
 
     private var gpsValue: String {
@@ -328,32 +577,49 @@ struct DashboardView: View {
     }
     private var gpsTone: Color {
         switch gpsValue {
-        case "FIX": return FieldTheme.accent
-        case "STALE": return FieldTheme.danger
-        default: return FieldTheme.amber
+        case "FIX": FieldTheme.accent
+        case "STALE": FieldTheme.danger
+        default: FieldTheme.amber
         }
     }
     private var meshValue: String {
         switch mesh.linkState {
-        case .connected: return "LINKED"
-        case .scanning: return "SCANNING"
-        case .connecting, .syncing: return "SYNCING"
-        default: return "IDLE"
+        case .connected: "LINKED"
+        case .scanning: "SCANNING"
+        case .connecting, .syncing: "SYNCING"
+        default: "IDLE"
         }
     }
-    private var mapEntrySubtitle: String {
-        state.mapPacks.contains(where: { $0.active })
-            ? "LOCAL PACK ACTIVE  /  VIEW COVERAGE"
-            : "LIVE TERRAIN  /  IMPORT MAPS FOR OFFLINE"
-    }
     private var batteryText: String {
-        sensor.snapshot.batteryPercent.map { "\($0)%" } ?? "—"
+        sensor.snapshot.batteryPercent.map { "\($0)%" } ?? "--"
+    }
+    private var latitudeText: String {
+        guard let fix = location.location, fix.horizontalAccuracy >= 0 else { return "LAT --" }
+        return String(format: "LAT %.4f", fix.coordinate.latitude)
+    }
+    private var longitudeText: String {
+        guard let fix = location.location, fix.horizontalAccuracy >= 0 else { return "LON --" }
+        return String(format: "LON %.4f", fix.coordinate.longitude)
     }
     private var altitudeText: String {
-        location.location.map { "\(Int($0.altitude * 3.28084)) ft" } ?? "—"
+        guard let fix = location.location, fix.horizontalAccuracy >= 0 else { return "--" }
+        return "\(Int(fix.altitude * 3.28084)) FT"
     }
     private var accuracyText: String {
-        location.location.map { "±\(Int(max(0, $0.horizontalAccuracy)))m" } ?? "NO FIX"
+        guard let fix = location.location, fix.horizontalAccuracy >= 0 else { return "NO FIX" }
+        return gpsValue == "STALE" ? "STALE FIX" : "±\(Int(fix.horizontalAccuracy)) M"
+    }
+    private var distanceValue: String {
+        guard let route = state.activeRoute else { return "-- MI" }
+        return String(format: "%.2f MI", RouteEngine.metrics(for: route).distanceMiles)
+    }
+    private var ascentValue: String {
+        guard let route = state.activeRoute else { return "-- FT" }
+        return String(format: "%.0f FT", RouteEngine.metrics(for: route).ascentFeet)
+    }
+    private var etaValue: String {
+        guard let route = state.activeRoute else { return "--" }
+        return RouteEngine.metrics(for: route).estimatedSeconds.fieldDuration
     }
 
     private struct PriorityItem {
@@ -434,120 +700,5 @@ struct DashboardView: View {
             .init(severity: 0, category: "PREFLIGHT", title: "Checklist complete",
                   detail: "Continue monitoring the actual weather, route and equipment.",
                   tone: FieldTheme.accent, symbol: "checkmark.shield")
-    }
-}
-
-private struct ConsoleStatus: View {
-    let symbol: String
-    let title: String
-    let value: String
-    let tone: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: symbol).font(.caption2)
-                Text(title).font(.caption2.bold().monospaced()).tracking(0.5)
-            }
-            .foregroundStyle(FieldTheme.dim)
-            HStack(spacing: 5) {
-                Circle().fill(tone).frame(width: 5, height: 5)
-                Text(value)
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(FieldTheme.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 11)
-    }
-}
-
-// Canvas can make the Intel simulator's first frame dependent on its Metal
-// renderer. Use a plain Shape for this static decorative background instead.
-// This is not a geographic map and does not imply offline map coverage.
-private struct TopographicLines: View {
-    var body: some View {
-        TopographicContourShape()
-            .stroke(FieldTheme.accent.opacity(0.19), lineWidth: 1)
-            .background(FieldTheme.panelRaised.opacity(0.68))
-            .accessibilityHidden(true)
-    }
-}
-
-private struct TopographicContourShape: Shape {
-    func path(in bounds: CGRect) -> Path {
-        var path = Path()
-        for index in 0..<9 {
-            let ring = CGFloat(index)
-            let contour = CGRect(x: bounds.width * 0.49 - ring * 25,
-                                 y: -bounds.height * 0.42 + ring * 11,
-                                 width: bounds.width * 0.79 + ring * 44,
-                                 height: bounds.height * 1.22 + ring * 35)
-            path.addEllipse(in: contour)
-        }
-        let cross = CGPoint(x: bounds.width * 0.79, y: bounds.height * 0.54)
-        path.move(to: CGPoint(x: cross.x - 10, y: cross.y))
-        path.addLine(to: CGPoint(x: cross.x + 10, y: cross.y))
-        path.move(to: CGPoint(x: cross.x, y: cross.y - 10))
-        path.addLine(to: CGPoint(x: cross.x, y: cross.y + 10))
-        return path
-    }
-}
-
-private struct FieldActionLabel: View {
-    let symbol: String
-    let title: String
-    let subtitle: String
-    var tone: Color = FieldTheme.accent
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(tone)
-                .frame(width: 28)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(FieldTheme.text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.83)
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(FieldTheme.dim)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 62)
-        .background(FieldTheme.panel, in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12).stroke(tone.opacity(0.45), lineWidth: 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct DiagnosticRow: View {
-    let symbol: String
-    let title: String
-    let detail: String
-    let tone: Color
-
-    var body: some View {
-        HStack {
-            Image(systemName: symbol)
-                .foregroundStyle(tone)
-                .frame(width: 24)
-            Text(title).foregroundStyle(FieldTheme.text)
-            Spacer(minLength: 5)
-            Text(detail).foregroundStyle(FieldTheme.dim)
-        }
-        .font(.caption.monospaced())
     }
 }
