@@ -2,6 +2,9 @@
 
 This project is completely separate from `emdubr/field-os`. No Swift sources were pushed into the web repo.
 
+**Windows/iPhone quick start:** The GitHub `FIELD-iOS-simulator` artifact cannot run on Windows or be installed on your phone. Use the [free unsigned iPhone IPA workflow](https://github.com/emdubr/swift/actions/workflows/ios-device-ipa.yml) and follow [INSTALL-WINDOWS.md](INSTALL-WINDOWS.md). The IPA uses a standard public GitHub macOS runner; sign it locally on Windows with your own free Apple ID using Sideloadly. Never upload your Apple ID or signing credentials to GitHub.
+
+
 ## New in 0.8
 
 - **Local PMTiles rendering integration:** added MapLibre Native 6.28+ through Swift Package Manager, `pmtiles://file://` style generation for imported PMTiles v3 raster/vector archives, live UI toggle between local MapLibre and Apple MapKit, user location and route/waypoint annotations. Selected local packs contain no online tile URLs in the generated style. The style generator offers common OSM vector source layers and a manual layer-ID override. Vector styling is basic; it is not equivalent to all publisher-defined cartography. Actual map rendering has not been verified against the Apple SDK or on-device.
