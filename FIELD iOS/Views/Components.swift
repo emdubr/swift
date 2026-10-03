@@ -35,7 +35,8 @@ struct MetricTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(FieldTheme.panelRaised.opacity(0.75), in: RoundedRectangle(cornerRadius: 10))
+        .background(FieldTheme.panelRaised.opacity(0.75))
+        .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.84), lineWidth: 1))
     }
 }
 
@@ -64,8 +65,8 @@ struct StatusPill: View {
         Text(text.uppercased()).font(.caption2.bold().monospaced())
             .foregroundStyle(tone)
             .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(tone.opacity(0.12), in: Capsule())
-            .overlay(Capsule().stroke(tone.opacity(0.55)))
+            .background(tone.opacity(0.12))
+            .overlay(Rectangle().stroke(tone.opacity(0.55), lineWidth: 1))
     }
 }
 
