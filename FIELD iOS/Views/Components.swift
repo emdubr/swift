@@ -116,7 +116,7 @@ struct SecondaryConsoleTitle: View {
 struct SecondaryConsolePanel<Content: View>: View {
     let title: String
     var detail: String = ""
-    @ViewBuilder let content: Content
+    let content: Content
 
     init(title: String, detail: String = "", @ViewBuilder content: () -> Content) {
         self.title = title
