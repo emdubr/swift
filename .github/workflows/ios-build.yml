@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    # Standard Intel (NOT a paid larger runner) is used only for explicit startup diagnostics.
+    # This PR tests real screenshots on the ordinary public Apple Silicon runner. Intel remains for main previews.
     # Default PR/push compilation stays on the standard public ARM runner.
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))) && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 35
@@ -102,7 +102,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
       - name: Boot and install free iPhone simulator for UI screenshots
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[preview]'))
         timeout-minutes: 16
         shell: bash
         run: |
@@ -157,7 +157,7 @@ jobs:
           time.sleep(20)
           PY
       - name: Capture real native dashboard, map and route planner
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[preview]'))
         # Five staged screenshots plus a slow Intel sim can exceed nine minutes.
         timeout-minutes: 12
         shell: bash
@@ -166,7 +166,7 @@ jobs:
           DEVICE="$(cat build/screenshots/simulator-device-id.txt)"
           python3 Tests/simulator-smoke.py "$DEVICE"
       - name: Shutdown screenshot simulator
-        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
+        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[preview]')))
         continue-on-error: true
         timeout-minutes: 1
         run: |
@@ -175,7 +175,7 @@ jobs:
             xcrun simctl shutdown "$DEVICE" || true
           fi
       - name: Upload iPhone UI preview and launch diagnostics
-        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')))
+        if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[preview]')))
         uses: actions/upload-artifact@v4
         with:
           name: FIELD-iOS-ui-preview-and-diagnostics
