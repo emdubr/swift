@@ -173,20 +173,33 @@ private struct LoRaChatView: View {
             .background(FieldTheme.background)
 
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
+                HStack(spacing: 8) {
                     Text("DESTINATION")
                         .foregroundStyle(FieldTheme.dim)
-                    Spacer(minLength: 0)
-                    Picker("Recipient", selection: $destination) {
-                        Text("BROADCAST / CHANNEL").tag(nil as UInt32?)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                    Menu {
+                        Button("BROADCAST / CHANNEL") { destination = nil }
                         ForEach(mesh.meshNodes) { node in
-                            Text("DIRECT: \(node.name)").tag(Optional(node.id))
+                            Button("DIRECT: \(node.name)") { destination = node.id }
                         }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(destination == nil ? "BROADCAST" : "DIRECT NODE")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9))
+                        }
+                        .foregroundStyle(FieldTheme.accent)
+                        .padding(.horizontal, 9)
+                        .frame(height: 34)
+                        .background(FieldTheme.panelRaised)
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                     }
-                    .pickerStyle(.menu)
-                    .tint(FieldTheme.accent)
+                    .accessibilityLabel(destination == nil ? "Broadcast to channel" : "Direct radio recipient")
                 }
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .frame(height: 36)
 
                 HStack(alignment: .bottom, spacing: 6) {
                     TextField("WRITE RADIO MESSAGE", text: $draft, axis: .vertical)
