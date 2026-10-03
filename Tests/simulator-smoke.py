@@ -201,7 +201,11 @@ def main() -> int:
         return 4
     if not launch(device, "05-native-route-planner", ["-FIELDPreviewRoute", "-FIELDRenderOnly"]):
         return 5
-    print("Minimal app, isolated real dashboard, full dashboard, map and route planner all rendered.", flush=True)
+    if not launch(device, "06-native-comms", ["-FIELDPreviewComms", "-FIELDRenderOnly"]):
+        return 6
+    if not launch(device, "07-native-tools", ["-FIELDPreviewTools", "-FIELDRenderOnly"]):
+        return 7
+    print("Minimal probe, unchanged Home, redesigned Map, Route, Comms and Tools all rendered.", flush=True)
     return 0
 
 
