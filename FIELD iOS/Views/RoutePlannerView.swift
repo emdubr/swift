@@ -6,31 +6,83 @@ struct RoutePlannerView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var location: LocationService
     @State private var draft = FieldRoute()
-    @State private var camera: MapCameraPosition = .automatic
+    // Consistent example hiking-region viewport until a GPS fix, saved route
+    // or the user's own map data selects an actual location.
+    @State private var camera: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 44.17, longitude: -73.91),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    )
     @State private var importing = false
     @State private var importError: String?
     @State private var undoStack: [FieldRoute] = []
     @State private var redoStack: [FieldRoute] = []
     @State private var exporting = false
     @State private var didInitializeDraft = false
+    @State private var editorExpanded = true
+    @State private var elevationExpanded = false
+    @State private var riskExpanded = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
+            GeometryReader { viewport in
+                VStack(spacing: 0) {
+                    SecondaryConsoleTitle(
+                        title: "ROUTE WORKSTATION",
+                        status: "\(draft.points.count) POINTS / DRAFT",
+                        symbol: "point.topleft.down.to.point.bottomright.curvepath"
+                    )
                     routeMap
+                        .frame(height: max(250, min(440, viewport.size.height * 0.53)))
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
                     quickMetrics
-                    routeEditor
-                    metricsPanel
-                    terrainRiskPanel
-                    actionPanel
-                }.padding(14)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 7)
+                    ScrollView {
+                        VStack(spacing: 9) {
+                            DisclosureGroup(isExpanded: $editorExpanded) {
+                                routeEditor
+                                    .padding(.top, 8)
+                            } label: {
+                                consoleDisclosure("ROUTE EDITOR", detail: "\(draft.points.count) WAYPOINTS")
+                            }
+                            .padding(9)
+                            .background(FieldTheme.panel)
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+
+                            DisclosureGroup(isExpanded: $elevationExpanded) {
+                                metricsPanel.padding(.top, 8)
+                            } label: {
+                                consoleDisclosure("ELEVATION + TERRAIN", detail: "PROFILE")
+                            }
+                            .padding(9)
+                            .background(FieldTheme.panel)
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+
+                            DisclosureGroup(isExpanded: $riskExpanded) {
+                                terrainRiskPanel.padding(.top, 8)
+                            } label: {
+                                consoleDisclosure("TERRAIN RISKS", detail: "REVIEW")
+                            }
+                            .padding(9)
+                            .background(FieldTheme.panel)
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                            actionPanel
+                        }
+                        .padding(.horizontal, 8)
+                        // Editor and import controls must scroll fully above the
+                        // always-visible save bar, even on small iPhone screens.
+                        .padding(.bottom, 30)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                }
+                .background(FieldTheme.background.ignoresSafeArea())
+                .safeAreaInset(edge: .bottom, spacing: 0) { editorDock }
             }
-            .background(FieldTheme.background)
-            .scrollDismissesKeyboard(.interactively)
-            .safeAreaInset(edge: .bottom, spacing: 0) { editorDock }
-            .navigationTitle("ROUTE PLANNER")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 // A retained tab must not discard an unsaved mobile draft
                 // every time someone switches over to the map and back.
@@ -56,6 +108,21 @@ struct RoutePlannerView: View {
         }
     }
 
+    private func consoleDisclosure(_ title: String, detail: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: "line.3.horizontal.decrease")
+                .foregroundStyle(FieldTheme.accent)
+            Text(title)
+                .foregroundStyle(FieldTheme.text)
+            Spacer(minLength: 3)
+            Text(detail)
+                .foregroundStyle(FieldTheme.dim)
+        }
+        .font(.system(size: 10, weight: .bold, design: .monospaced))
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
     private var routeMap: some View {
         MapReader { proxy in
             Map(position: $camera) {
@@ -71,18 +138,24 @@ struct RoutePlannerView: View {
                 }
             }
             .mapStyle(.standard(elevation: .realistic))
-            .mapControls { MapCompass(); MapScaleView(); MapUserLocationButton() }
+            .mapControls { MapCompass(); MapScaleView() }
             .onTapGesture { screenPoint in
                 if let coordinate = proxy.convert(screenPoint, from: .local) {
                     addPoint(RoutePoint(latitude: coordinate.latitude, longitude: coordinate.longitude))
                 }
             }
         }
-        .frame(height: 340)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipped()
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         .overlay(alignment: .topLeading) {
-            Text("TAP MAP TO ADD ROUTE POINTS").font(.caption2.bold().monospaced())
-                .padding(7).background(.ultraThinMaterial, in: Capsule()).padding(8)
+            Text("TAP MAP TO ADD WAYPOINTS  //  DRAG TO PAN")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.text)
+                .padding(8)
+                .background(FieldTheme.panel.opacity(0.94))
+                .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                .padding(8)
+                .allowsHitTesting(false)
         }
     }
 
@@ -102,8 +175,8 @@ struct RoutePlannerView: View {
         HStack(spacing: 9) {
             Button { undo() } label: {
                 Image(systemName: "arrow.uturn.backward")
-                    .frame(width: 48, height: 48)
-                    .background(FieldTheme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+                    .frame(width: 44, height: 44)
+                    .background(FieldTheme.panelRaised, in: Rectangle())
             }
             .disabled(undoStack.isEmpty)
             .accessibilityLabel("Undo route edit")
@@ -111,7 +184,7 @@ struct RoutePlannerView: View {
             Button { redo() } label: {
                 Image(systemName: "arrow.uturn.forward")
                     .frame(width: 48, height: 48)
-                    .background(FieldTheme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+                    .background(FieldTheme.panelRaised, in: Rectangle())
             }
             .disabled(redoStack.isEmpty)
             .accessibilityLabel("Redo route edit")
@@ -121,9 +194,9 @@ struct RoutePlannerView: View {
             } label: {
                 Label("SAVE ROUTE", systemImage: "square.and.arrow.down")
                     .font(.caption.bold().monospaced())
-                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .foregroundStyle(FieldTheme.background)
-                    .background(FieldTheme.accent, in: RoundedRectangle(cornerRadius: 12))
+                    .background(FieldTheme.accent, in: Rectangle())
             }
             .accessibilityHint("Save the current draft as the active route")
         }
@@ -131,7 +204,7 @@ struct RoutePlannerView: View {
         .tint(FieldTheme.accent)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(FieldTheme.background.opacity(0.97))
+        .background(FieldTheme.background)
         .overlay(alignment: .top) {
             Rectangle().fill(FieldTheme.border).frame(height: 1)
         }
@@ -140,26 +213,23 @@ struct RoutePlannerView: View {
     private var routeEditor: some View {
         VStack(alignment: .leading, spacing: 10) {
             FieldHeader(title: "Route definition", subtitle: "\(draft.points.count) POINTS")
-            TextField("Route name", text: $draft.name).textFieldStyle(.roundedBorder)
+            TextField("Route name", text: $draft.name).textFieldStyle(.plain).padding(9).background(FieldTheme.panelRaised)
             Picker("Terrain", selection: $draft.terrain) {
                 ForEach(TerrainType.allCases) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.menu)
-            TextField("Notes", text: $draft.notes, axis: .vertical).textFieldStyle(.roundedBorder)
-            HStack {
-                Button("USE GPS") { addCurrentLocation() }
-                    .disabled(location.location == nil || draft.points.count >= GPXService.maxPoints)
-                Button("UNDO") { undo() }.disabled(undoStack.isEmpty)
-                Button("REDO") { redo() }.disabled(redoStack.isEmpty)
-            }.buttonStyle(TerminalButtonStyle())
+            TextField("Notes", text: $draft.notes, axis: .vertical).textFieldStyle(.plain).padding(9).background(FieldTheme.panelRaised)
+            Button("ADD CURRENT GPS POINT") { addCurrentLocation() }
+                .disabled(location.location == nil || draft.points.count >= GPXService.maxPoints)
+                .buttonStyle(SecondaryConsoleButton())
             HStack {
                 Button("REVERSE") { mutate { $0.points.reverse() } }.disabled(draft.points.count < 2)
                 Button("CLEAR", role: .destructive) { mutate { $0.points.removeAll() } }.disabled(draft.points.isEmpty)
-            }.buttonStyle(TerminalButtonStyle())
+            }.buttonStyle(SecondaryConsoleButton())
             if state.trailNetwork != nil {
                 HStack {
                     Button("SNAP POINTS") { snapDraftToTrails() }
                     Button("ROUTE FIRST → LAST") { routeFirstToLast() }.disabled(draft.points.count < 2)
-                }.buttonStyle(TerminalButtonStyle())
+                }.buttonStyle(SecondaryConsoleButton())
                 Text("OFFLINE TRAIL GRAPH ACTIVE // routing does not require network access")
                     .font(.caption2.bold().monospaced()).foregroundStyle(FieldTheme.accent)
             }
@@ -204,10 +274,10 @@ struct RoutePlannerView: View {
     private var actionPanel: some View {
         VStack(spacing: 10) {
             Button("IMPORT GPX") { importing = true }
-                .buttonStyle(TerminalButtonStyle())
+                .buttonStyle(SecondaryConsoleButton())
             if draft.points.count >= 2 {
                 Button("EXPORT .GPX FILE") { exporting = true }
-                    .buttonStyle(TerminalButtonStyle())
+                    .buttonStyle(SecondaryConsoleButton())
             }
         }.fieldPanel()
     }

@@ -2,16 +2,83 @@ import MapKit
 import SwiftUI
 
 struct CommsView: View {
-    enum SectionTab: String, CaseIterable, Identifiable { case chat = "LoRa Chat", map = "Mesh Map", inbox = "Inbox"; var id: String { rawValue } }
-    @EnvironmentObject private var state: AppState
+    enum SectionTab: String, CaseIterable, Identifiable {
+        case chat = "LORA CHAT", map = "MESH MAP", inbox = "INBOX"
+        var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .chat: return "bubble.left.and.bubble.right"
+            case .map: return "point.3.connected.trianglepath.dotted"
+            case .inbox: return "tray"
+            }
+        }
+    }
+
     @EnvironmentObject private var mesh: MeshService
     @State private var tab: SectionTab = .chat
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Comms", selection: $tab) { ForEach(SectionTab.allCases) { Text($0.rawValue).tag($0) } }
-                    .pickerStyle(.segmented).padding()
+                SecondaryConsoleTitle(
+                    title: "COMMS / MESH",
+                    status: mesh.linkState == .connected ? "RADIO LINKED" : "RADIO NOT LINKED",
+                    symbol: "dot.radiowaves.left.and.right"
+                )
+                HStack(spacing: 4) {
+                    ForEach(SectionTab.allCases) { item in
+                        Button {
+                            tab = item
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: item.symbol)
+                                    .font(.system(size: 12, weight: .medium))
+                                Text(item.rawValue)
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            .foregroundStyle(tab == item ? FieldTheme.background : FieldTheme.accent)
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                            .background(tab == item ? FieldTheme.accent : FieldTheme.panel)
+                            .overlay(Rectangle().stroke(
+                                tab == item ? FieldTheme.accent : FieldTheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(tab == item ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(mesh.linkState == .connected ? FieldTheme.accent : FieldTheme.amber)
+                        .frame(width: 6, height: 6)
+                    Text(mesh.linkState.rawValue.uppercased())
+                    Text(" // ")
+                        .foregroundStyle(FieldTheme.dim)
+                    Text(mesh.transportNote)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 1)
+                    Button(mesh.linkState == .scanning ? "STOP" : "SCAN") {
+                        if mesh.linkState == .scanning { mesh.stopScan() }
+                        else { mesh.scan() }
+                    }
+                    .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(FieldTheme.accent)
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .overlay(Rectangle().stroke(FieldTheme.accent.opacity(0.7), lineWidth: 1))
+                }
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(FieldTheme.text)
+                .padding(.horizontal, 10)
+                .frame(height: 44)
+                .background(FieldTheme.panelRaised)
+                .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
+
                 Group {
                     switch tab {
                     case .chat: LoRaChatView()
@@ -19,14 +86,10 @@ struct CommsView: View {
                     case .inbox: UnifiedInboxView()
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(FieldTheme.background)
-            .navigationTitle("Comms / Mesh")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(mesh.linkState == .scanning ? "STOP" : "SCAN") { mesh.linkState == .scanning ? mesh.stopScan() : mesh.scan() }
-                }
-            }
+            .background(FieldTheme.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }
@@ -36,33 +99,149 @@ private struct LoRaChatView: View {
     @EnvironmentObject private var mesh: MeshService
     @State private var draft = ""
     @State private var destination: UInt32? = nil
+
+    private var pending: Int {
+        state.messages.filter { $0.outgoing && ($0.status == .queued || $0.status == .failed) }.count
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
-            HStack { StatusPill(text: mesh.linkState.rawValue, tone: mesh.linkState == .connected ? FieldTheme.accent : FieldTheme.amber); Spacer(); Text(mesh.transportNote).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }.padding(.horizontal)
-            List(state.messages.sorted(by: { $0.createdAt < $1.createdAt })) { message in
-                HStack { if message.outgoing { Spacer() }; VStack(alignment: .leading) { Text(message.text); Text("\(message.destination.map { String(format: "!%08X", $0) } ?? message.channel) // \(message.status.label)").font(.caption2).foregroundStyle(.secondary) }; if !message.outgoing { Spacer() } }
-            }.listStyle(.plain)
-            Picker("Recipient", selection: $destination) {
-                Text("Broadcast to channel").tag(nil as UInt32?)
-                ForEach(mesh.meshNodes) { node in
-                    Text("Direct: \(node.name)").tag(Optional(node.id))
+        VStack(spacing: 0) {
+            HStack(spacing: 5) {
+                Text("RADIO MESSAGES")
+                    .foregroundStyle(FieldTheme.text)
+                Spacer(minLength: 3)
+                Text("\(state.messages.count) LOGGED  //  \(pending) PENDING")
+                    .foregroundStyle(FieldTheme.dim)
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .padding(.horizontal, 12)
+            .frame(height: 39)
+
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if state.messages.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "dot.radiowaves.left.and.right")
+                                .font(.system(size: 32, weight: .ultraLight))
+                                .foregroundStyle(FieldTheme.dim)
+                            Text("NO RADIO MESSAGES")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundStyle(FieldTheme.text)
+                            Text("Pair a Meshtastic radio or queue an offline message below. Queued does not mean delivered.")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(FieldTheme.dim)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 56)
+                        .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.55), lineWidth: 1))
+                    } else {
+                        ForEach(state.messages.sorted(by: { $0.createdAt < $1.createdAt })) { message in
+                            HStack(spacing: 0) {
+                                if message.outgoing { Spacer(minLength: 35) }
+                                VStack(alignment: .leading, spacing: 7) {
+                                    HStack {
+                                        Text(message.outgoing ? "OUTGOING" : "INCOMING")
+                                        Spacer(minLength: 4)
+                                        Text(message.createdAt.formatted(date: .omitted, time: .shortened))
+                                    }
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(FieldTheme.dim)
+                                    Text(message.text)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(FieldTheme.text)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("\(message.destination.map { String(format: "!%08X", $0) } ?? message.channel)  //  \(message.status.label.uppercased())")
+                                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(message.status == .failed ? FieldTheme.amber : FieldTheme.accent)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
+                                }
+                                .padding(10)
+                                .background(message.outgoing ? FieldTheme.panelRaised : FieldTheme.panel)
+                                .overlay(Rectangle().stroke(
+                                    message.outgoing ? FieldTheme.accent.opacity(0.48) : FieldTheme.border, lineWidth: 1))
+                                if !message.outgoing { Spacer(minLength: 35) }
+                            }
+                        }
+                    }
                 }
-            }.padding(.horizontal)
-            HStack {
-                TextField("Message (200 UTF-8 bytes max)", text: $draft, axis: .vertical).textFieldStyle(.roundedBorder)
-                Button("QUEUE") { state.queueMessage(draft, destination: destination); draft = "" }.buttonStyle(.borderedProminent).disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Data(draft.trimmingCharacters(in: .whitespacesAndNewlines).utf8).count > 200)
-            }.padding()
-            if Data(draft.utf8).count > 200 { Text("Message is too long for this radio profile. Split it into shorter messages.").font(.caption).foregroundStyle(FieldTheme.amber) }
-            HStack {
-                Button("SEND NEXT QUEUED") { state.sendNextQueued(using: mesh) }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(mesh.linkState != .connected || !state.messages.contains(where: { $0.outgoing && ($0.status == .queued || $0.status == .failed) }))
-                Spacer()
-                Text("\(state.messages.filter { $0.outgoing && ($0.status == .queued || $0.status == .failed) }.count) pending")
-                    .font(.caption.monospaced())
-            }.padding(.horizontal)
-            Text("BLE write and radio-queue acceptance are not end-to-end delivery. An actual Meshtastic device is required to verify RF behavior.")
-                .font(.caption2).foregroundStyle(FieldTheme.amber).padding(.horizontal).padding(.bottom, 8)
+                .padding(10)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(FieldTheme.background)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("DESTINATION")
+                        .foregroundStyle(FieldTheme.dim)
+                        .lineLimit(1)
+                    Spacer(minLength: 2)
+                    Menu {
+                        Button("BROADCAST / CHANNEL") { destination = nil }
+                        ForEach(mesh.meshNodes) { node in
+                            Button("DIRECT: \(node.name)") { destination = node.id }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(destination == nil ? "BROADCAST" : "DIRECT NODE")
+                                .lineLimit(1)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9))
+                        }
+                        .foregroundStyle(FieldTheme.accent)
+                        .padding(.horizontal, 9)
+                        .frame(height: 34)
+                        .background(FieldTheme.panelRaised)
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    }
+                    .accessibilityLabel(destination == nil ? "Broadcast to channel" : "Direct radio recipient")
+                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .frame(height: 36)
+
+                HStack(alignment: .bottom, spacing: 6) {
+                    TextField("WRITE RADIO MESSAGE", text: $draft, axis: .vertical)
+                        .font(.system(size: 12, design: .monospaced))
+                        .lineLimit(1...3)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(FieldTheme.text)
+                        .tint(FieldTheme.accent)
+                        .background(FieldTheme.panelRaised)
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    Button("QUEUE") {
+                        state.queueMessage(draft, destination: destination)
+                        draft = ""
+                    }
+                    .buttonStyle(SecondaryConsoleButton(emphasized: true))
+                    .frame(width: 77)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || Data(draft.trimmingCharacters(in: .whitespacesAndNewlines).utf8).count > 200)
+                }
+                if Data(draft.utf8).count > 200 {
+                    Text("OVER RADIO LIMIT: 200 UTF-8 BYTES")
+                        .foregroundStyle(FieldTheme.amber)
+                        .font(.caption2.monospaced())
+                }
+                HStack(spacing: 7) {
+                    Button("SEND NEXT QUEUED") { state.sendNextQueued(using: mesh) }
+                        .buttonStyle(SecondaryConsoleButton())
+                        .disabled(mesh.linkState != .connected || pending == 0)
+                    Text("\(pending) IN QUEUE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(FieldTheme.dim)
+                        .frame(width: 97)
+                }
+                Text("RADIO QUEUE ACCEPTANCE IS NOT VERIFIED RF DELIVERY")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(FieldTheme.amber)
+                    .lineLimit(2)
+            }
+            .padding(9)
+            .background(FieldTheme.panel)
+            .overlay(alignment: .top) { FieldTheme.border.frame(height: 1) }
         }
     }
 }
@@ -71,72 +250,139 @@ private struct MeshMapView: View {
     @EnvironmentObject private var mesh: MeshService
     @State private var camera: MapCameraPosition = .automatic
     var body: some View {
-        VStack(spacing: 8) {
-            Map(position: $camera) {
-                ForEach(mesh.meshNodes) { node in
-                    if let point = node.location {
-                        Annotation(node.name, coordinate: point.coordinate) {
-                            Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(FieldTheme.accent)
-                        }
-                    }
-                }
-            }.mapControls { MapCompass(); MapScaleView() }
-            Text("Mesh positions may come from the radio's cached NodeDB and are NOT verified live positions.")
-                .font(.caption2).foregroundStyle(FieldTheme.amber).padding(.horizontal)
-            List {
-                Section("Decoded mesh nodes") {
-                    if mesh.meshNodes.isEmpty { Text("No decoded node positions yet").foregroundStyle(.secondary) }
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                Map(position: $camera) {
                     ForEach(mesh.meshNodes) { node in
-                        VStack(alignment: .leading) {
-                            Text(node.name)
-                            Text("Received by phone \(node.lastHeard.formatted(date: .omitted, time: .shortened)); may be cached radio data")
-                                .font(.caption).foregroundStyle(.secondary)
-                            if let battery = node.batteryPercent {
-                                Text(battery > 100 ? "RADIO: POWERED" : "RADIO BATTERY: \(battery)%")
-                                    .font(.caption.monospaced())
-                            }
-                            if let channel = node.channelUtilization {
-                                Text(String(format: "CHANNEL UTILIZATION %.1f%%", channel)).font(.caption.monospaced())
-                            }
-                            if let temp = node.temperatureC {
-                                Text(String(format: "REMOTE SENSOR %.1f°C", temp)).font(.caption.monospaced())
-                            }
-                            if let pressure = node.pressureHPa {
-                                Text(String(format: "REMOTE PRESSURE %.1f hPa", pressure)).font(.caption.monospaced())
+                        if let point = node.location {
+                            Annotation(node.name, coordinate: point.coordinate) {
+                                Image(systemName: "dot.radiowaves.left.and.right")
+                                    .font(.title3)
+                                    .foregroundStyle(FieldTheme.accent)
                             }
                         }
                     }
                 }
-                Section("Nearby Bluetooth radios") {
-                    ForEach(mesh.peers) { peer in
-                        Button { mesh.connect(to: peer.id) } label: {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(peer.name)
-                                    Text("BLE RSSI \(peer.rssi) dBm; not mesh signal strength")
-                                        .font(.caption).foregroundStyle(.secondary)
+                .mapStyle(.standard(elevation: .realistic))
+                .mapControls { MapCompass(); MapScaleView() }
+                Text("CACHED RADIO POSITIONS  //  NOT LIVE GPS")
+                    .font(.system(size: 9, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(FieldTheme.amber)
+                    .padding(9)
+                    .background(FieldTheme.panel.opacity(0.96))
+                    .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    .padding(9)
+                    .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SecondaryConsolePanel(title: "Radio node database", detail: "\(mesh.meshNodes.count) NODES") {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 9) {
+                        if mesh.meshNodes.isEmpty {
+                            Text("No decoded radio positions. Cached nodes appear after a radio sync.")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(FieldTheme.dim)
+                        }
+                        ForEach(mesh.meshNodes) { node in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(node.name.uppercased())
+                                        .foregroundStyle(FieldTheme.text)
+                                    Spacer()
+                                    Text(node.lastHeard.formatted(date: .omitted, time: .shortened))
+                                        .foregroundStyle(FieldTheme.dim)
                                 }
-                                Spacer()
-                                if peer.connected { StatusPill(text: "LINK") }
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                HStack(spacing: 8) {
+                                    if let battery = node.batteryPercent {
+                                        Text(battery > 100 ? "POWERED" : "BAT \(battery)%")
+                                    }
+                                    if let channel = node.channelUtilization {
+                                        Text(String(format: "AIR %.1f%%", channel))
+                                    }
+                                    if let temp = node.temperatureC {
+                                        Text(String(format: "TEMP %.1f°C", temp))
+                                    }
+                                }
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundStyle(FieldTheme.dim)
                             }
+                            .padding(8)
+                            .background(FieldTheme.panelRaised)
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                        }
+                        ForEach(mesh.peers) { peer in
+                            Button { mesh.connect(to: peer.id) } label: {
+                                HStack {
+                                    Text(peer.name)
+                                    Spacer()
+                                    Text("BLE \(peer.rssi) dBm")
+                                    if peer.connected { Image(systemName: "checkmark.link") }
+                                }
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(FieldTheme.accent)
+                                .padding(9)
+                                .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Bluetooth RSSI is not LoRa RF signal strength")
                         }
                     }
                 }
-            }.listStyle(.plain).frame(maxHeight: 260)
+                .frame(maxHeight: 135)
+            }
         }
+        .background(FieldTheme.background)
     }
 }
 
 private struct UnifiedInboxView: View {
     @EnvironmentObject private var state: AppState
     var body: some View {
-        List(state.messages.sorted(by: { $0.createdAt > $1.createdAt })) { message in
-            VStack(alignment: .leading, spacing: 4) {
-                HStack { Text(message.outgoing ? "OUTGOING" : "INCOMING").font(.caption2.bold()); Spacer(); Text(message.createdAt.formatted(date: .omitted, time: .shortened)).font(.caption2) }
-                Text(message.text)
-                Text("\(message.channel) // \(message.transport ?? "LOCAL") // \(message.status.label)")
-                if let error = message.lastError { Text(error).font(.caption2).foregroundStyle(FieldTheme.amber) }
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                SecondaryConsolePanel(title: "Unified inbox", detail: "\(state.messages.count) LOGGED") {
+                    Text("LOCAL MESSAGE LOG  //  STATUS MAY NOT INDICATE DELIVERY")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(FieldTheme.dim)
+                }
+                if state.messages.isEmpty {
+                    SecondaryConsolePanel(title: "No messages") {
+                        Text("Incoming and queued outgoing radio traffic will appear here.")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(FieldTheme.dim)
+                    }
+                }
+                ForEach(state.messages.sorted(by: { $0.createdAt > $1.createdAt })) { message in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            Text(message.outgoing ? "OUTGOING" : "INCOMING")
+                                .foregroundStyle(FieldTheme.accent)
+                            Spacer()
+                            Text(message.createdAt.formatted(date: .omitted, time: .shortened))
+                                .foregroundStyle(FieldTheme.dim)
+                        }
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        Text(message.text)
+                            .font(.system(size: 12))
+                            .foregroundStyle(FieldTheme.text)
+                        Text("\(message.channel)  //  \(message.transport ?? "LOCAL")  //  \(message.status.label)")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(FieldTheme.dim)
+                        if let error = message.lastError {
+                            Text(error)
+                                .font(.caption2)
+                                .foregroundStyle(FieldTheme.amber)
+                        }
+                    }
+                    .padding(11)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(FieldTheme.panel)
+                    .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                }
             }
-        }.listStyle(.plain)
+            .padding(10)
+        }
+        .background(FieldTheme.background)
     }
 }

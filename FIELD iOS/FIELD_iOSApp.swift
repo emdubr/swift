@@ -40,6 +40,8 @@ struct FIELD_iOSApp: App {
     // Cloud screenshot-only navigation. Never alters production launch behavior.
     private let previewMap = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewMap")
     private let previewRoute = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewRoute")
+    private let previewComms = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewComms")
+    private let previewTools = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewTools")
     // CI screenshot-only: render genuine native views but avoid emulator-only sensor startup.
     private let renderOnly = ProcessInfo.processInfo.arguments.contains("-FIELDRenderOnly")
     // Diagnostic only. Same real DashboardView, without TabView / RootView
@@ -84,6 +86,8 @@ struct FIELD_iOSApp: App {
                         }
                         if previewMap { appState.selectedTab = .map }
                         if previewRoute { appState.selectedTab = .route }
+                        if previewComms { appState.selectedTab = .comms }
+                        if previewTools { appState.selectedTab = .more }
                         Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_BOOT_LOCAL_DATA_READY")
                         // Let the first SwiftUI frame render before initiating permissions
                         // or the motion pipeline. These aren't required for launch.
