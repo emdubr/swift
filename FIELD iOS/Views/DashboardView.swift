@@ -222,24 +222,6 @@ struct DashboardView: View {
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
-                HStack(spacing: 5) {
-                    Image(systemName: "mountain.2.fill")
-                        .foregroundStyle(FieldTheme.accent)
-                    Text("TERRAIN MAP  //  FIELD GRID")
-                        .foregroundStyle(FieldTheme.text)
-                    Spacer(minLength: 2)
-                    Text(displayingLocalMap ? "LOCAL PMTILES" :
-                         state.settings.offlineMode ? "NO LOCAL MAP" : "APPLE MAPKIT")
-                        .foregroundStyle(displayingLocalMap ? FieldTheme.accent : FieldTheme.amber)
-                        .minimumScaleFactor(0.7)
-                }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .frame(height: 37)
-                .background(FieldTheme.panel.opacity(0.95))
-                .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
-
                 HStack(alignment: .top) {
                     Button {
                         if displayingLocalMap {
@@ -254,7 +236,7 @@ struct DashboardView: View {
                             Image(systemName: "square.3.layers.3d")
                             Text(displayingLocalMap ? "LOCAL" :
                                  state.settings.offlineMode ? "IMPORT MAP" :
-                                 (satellite ? "SATELLITE" : "STANDARD"))
+                                 (satellite ? "SATELLITE" : "HIKING"))
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 8))
                         }
@@ -269,12 +251,10 @@ struct DashboardView: View {
                     VStack(spacing: 1) {
                         mapTool("location.north.fill", "Center on current GPS fix",
                                 disabled: location.location == nil) { centerOnUser() }
-                        Rectangle().fill(FieldTheme.border).frame(height: 1)
-                        mapTool("point.topleft.down.to.point.bottomright.curvepath",
-                                "Fit loaded route", disabled: state.activeRoute == nil) { fitRoute() }
-                        Rectangle().fill(FieldTheme.border).frame(height: 1)
-                        mapTool("square.stack.3d.up", "Open full map and map layers") {
-                            state.selectedTab = .map
+                        if state.activeRoute != nil {
+                            Rectangle().fill(FieldTheme.border).frame(height: 1)
+                            mapTool("point.topleft.down.to.point.bottomright.curvepath",
+                                    "Fit loaded route") { fitRoute() }
                         }
                     }
                     .frame(width: 43)
@@ -284,23 +264,28 @@ struct DashboardView: View {
                 }
                 .padding(9)
                 Spacer(minLength: 0)
-                HStack {
-                    Label(gpsValue == "FIX" ? "CURRENT FIX" : "MAP VIEW · NO VERIFIED GPS",
-                          systemImage: gpsValue == "FIX" ? "location.fill" : "location.slash")
-                    Spacer(minLength: 4)
+                HStack(spacing: 5) {
+                    Text(gpsValue == "FIX" ? "GPS FIX" : "HIGH PEAKS EXAMPLE · NO GPS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.horizontal, 9)
+                        .frame(height: 29)
+                        .background(FieldTheme.panel.opacity(0.92))
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    Spacer(minLength: 1)
                     Button { state.selectedTab = .map } label: {
-                        HStack(spacing: 4) {
-                            Text("EXPAND MAP")
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .foregroundStyle(FieldTheme.accent)
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 37, height: 37)
+                            .background(FieldTheme.panel.opacity(0.92))
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                     }
+                    .accessibilityLabel("Expand to the full hiking map")
                 }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(FieldTheme.text)
+                .foregroundStyle(FieldTheme.accent)
                 .padding(.horizontal, 9)
-                .frame(height: 35)
-                .background(FieldTheme.panel.opacity(0.96))
+                .padding(.bottom, 8)
             }
         }
         .frame(height: height)
