@@ -30,21 +30,24 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             GeometryReader { viewport in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        commandHeader
-                        statusStrip
-                        safetyTicker
-                        terrainWorkspace(height: max(320, min(500, viewport.size.height * 0.59)))
-                        priorityAndLocation
-                        routeSummary
-                        utilityTray
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
+                VStack(spacing: 0) {
+                    commandHeader
+                    statusStrip
+                    safetyTicker
+                    terrainWorkspace(
+                        height: max(300, viewport.size.height
+                            - 44   // command header
+                            - 63   // device status
+                            - 25   // safety ticker
+                            - 93   // priority + coordinates
+                            - 91   // route summary
+                            - 62)  // command dock / safe-area allowance
+                    )
+                    priorityAndLocation
+                    routeSummary
                 }
-                .scrollIndicators(.hidden)
+                .padding(.horizontal, 7)
+                .padding(.top, 2)
                 .background(FieldTheme.background.ignoresSafeArea())
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     commandDock
@@ -538,18 +541,24 @@ struct DashboardView: View {
     }
 
     private var commandDock: some View {
-        HStack(spacing: 5) {
-            dockButton("map", "MAP") { state.selectedTab = .map }
+        HStack(spacing: 4) {
             dockButton("point.topleft.down.to.point.bottomright.curvepath", "ROUTE") {
                 state.selectedTab = .route
             }
-            dockButton("dot.radiowaves.left.and.right", "COMMS") { state.selectedTab = .comms }
-            dockButton("square.grid.2x2", "TOOLS") { state.selectedTab = .more }
+            dockButton("location.north.fill", "NAVIGATE") {
+                state.selectedTab = .map
+            }
+            dockButton("dot.radiowaves.left.and.right", "COMMS") {
+                state.selectedTab = .comms
+            }
+            dockButton("square.grid.2x2", "TOOLS") {
+                state.selectedTab = .more
+            }
         }
-        .padding(.horizontal, 9)
-        .padding(.top, 6)
+        .padding(.horizontal, 7)
+        .padding(.top, 5)
         .padding(.bottom, 3)
-        .background(FieldTheme.background.opacity(0.99))
+        .background(FieldTheme.background.opacity(0.995))
         .overlay(alignment: .top) { FieldTheme.border.frame(height: 1) }
     }
 
@@ -562,9 +571,15 @@ struct DashboardView: View {
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
             }
             .foregroundStyle(FieldTheme.accent)
-            .frame(maxWidth: .infinity, minHeight: 51)
-            .background(FieldTheme.panel)
-            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(
+                LinearGradient(
+                    colors: [FieldTheme.panelRaised.opacity(0.72), FieldTheme.panel],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.92), lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
