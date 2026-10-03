@@ -1,23 +1,149 @@
 import SwiftUI
 
 struct MoreModulesView: View {
+    @EnvironmentObject private var state: AppState
     @State private var search = ""
+    private let columns = [
+        GridItem(.flexible(minimum: 140), spacing: 8),
+        GridItem(.flexible(minimum: 140), spacing: 8)
+    ]
+
     var body: some View {
         NavigationStack {
-            List(filtered) { module in
-                NavigationLink(value: module) {
-                    ModuleRow(title: module.rawValue, symbol: module.symbol, subtitle: subtitle(module))
+            VStack(spacing: 0) {
+                SecondaryConsoleTitle(title: "FIELD MODULES", status: "TOOLS / LOCAL", symbol: "square.grid.2x2")
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(FieldTheme.accent)
+                    TextField("SEARCH MODULES", text: $search)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(FieldTheme.text)
+                        .tint(FieldTheme.accent)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    if !search.isEmpty {
+                        Button { search = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .accessibilityLabel("Clear module search")
+                    }
                 }
+                .padding(.horizontal, 11)
+                .frame(height: 44)
+                .background(FieldTheme.panelRaised)
+                .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+
+                ScrollView {
+                    LazyVStack(spacing: 13) {
+                        SecondaryConsolePanel(title: "Field readiness", detail: "ON DEVICE") {
+                            HStack(spacing: 6) {
+                                readinessStat("CHECKLIST", "\(state.readiness.completedCount)/\(state.readiness.totalCount)")
+                                Rectangle().fill(FieldTheme.border).frame(width: 1)
+                                readinessStat("LOCAL MAPS", "\(state.mapPacks.count)")
+                                Rectangle().fill(FieldTheme.border).frame(width: 1)
+                                readinessStat("WAYPOINTS", "\(state.waypoints.count)")
+                            }
+                            .frame(height: 36)
+                        }
+
+                        ForEach(moduleGroups, id: \.title) { group in
+                            let shown = group.modules.filter { matches($0) }
+                            if !shown.isEmpty {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    FieldHeader(title: group.title, subtitle: "\(shown.count) MODULES")
+                                        .padding(.horizontal, 2)
+                                    LazyVGrid(columns: columns, spacing: 8) {
+                                        ForEach(shown) { module in
+                                            NavigationLink(value: module) {
+                                                moduleTile(module)
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if moduleGroups.allSatisfy({ $0.modules.allSatisfy { !matches($0) } }) {
+                            SecondaryConsolePanel(title: "Search") {
+                                Text("No matching on-device modules.")
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(FieldTheme.dim)
+                            }
+                        }
+                        Text("FIELD / OS  //  NATIVE LOCAL MODULES")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(FieldTheme.dim)
+                            .padding(.bottom, 9)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.top, 2)
+                }
+                .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle("Field Modules")
-            .searchable(text: $search, prompt: "Find a module")
+            .background(FieldTheme.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: AppModule.self) { ModuleDestination(module: $0) }
         }
     }
 
-    private var filtered: [AppModule] {
-        search.isEmpty ? AppModule.allCases : AppModule.allCases.filter { $0.rawValue.localizedCaseInsensitiveContains(search) || subtitle($0).localizedCaseInsensitiveContains(search) }
+    private var moduleGroups: [(title: String, modules: [AppModule])] {
+        [
+            ("NAVIGATION & TRIPS", [.navigation, .returnFunctions, .waypoints, .track, .trip, .mission]),
+            ("FIELD INTELLIGENCE", [.weather, .sensors, .guide, .log, .power]),
+            ("MAPS & SYSTEM", [.offlineMaps, .system, .externalComms, .utilities]),
+            ("SAFETY", [.emergency, .lost])
+        ]
     }
+
+    private func matches(_ module: AppModule) -> Bool {
+        search.isEmpty || module.rawValue.localizedCaseInsensitiveContains(search)
+            || subtitle(module).localizedCaseInsensitiveContains(search)
+    }
+
+    private func readinessStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(FieldTheme.dim)
+            Text(value).font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.accent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func moduleTile(_ module: AppModule) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Image(systemName: module.symbol)
+                    .font(.system(size: 21))
+                    .foregroundStyle(module == .emergency ? FieldTheme.amber : FieldTheme.accent)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(FieldTheme.dim)
+            }
+            Spacer(minLength: 1)
+            Text(module.rawValue.uppercased())
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+            Text(subtitle(module))
+                .font(.system(size: 9))
+                .foregroundStyle(FieldTheme.dim)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 27, alignment: .top)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, minHeight: 115, maxHeight: 115, alignment: .topLeading)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+
     private func subtitle(_ m: AppModule) -> String {
         switch m {
         case .navigation: return "GPS, heading, off-route guidance"
@@ -36,7 +162,7 @@ struct MoreModulesView: View {
         case .lost: return "Lost-mode decision support"
         case .offlineMaps: return "On-device PMTiles, trails and POI import"
         case .utilities: return "DMS, distance/bearing, marks, sharing"
-        case .externalComms: return "TAP V2 GATT diagnostic bridge and manual satellite handoff"
+        case .externalComms: return "TAP V2 bridge and manual satellite handoff"
         }
     }
 }
@@ -44,6 +170,7 @@ struct MoreModulesView: View {
 struct ModuleDestination: View {
     var module: AppModule
     @ViewBuilder var body: some View {
+        Group {
         switch module {
         case .navigation: NavigationCenterView()
         case .returnFunctions: ReturnFunctionsView()
@@ -63,5 +190,12 @@ struct ModuleDestination: View {
         case .utilities: FieldUtilitiesView()
         case .externalComms: ExternalCommsView()
         }
+        }
+        .background(FieldTheme.background)
+        .scrollContentBackground(.hidden)
+        .tint(FieldTheme.accent)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(FieldTheme.panel, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
 }
