@@ -5,6 +5,12 @@ import OSLog
 // Map-first mobile counterpart to the web console. The visible map is real
 // MapKit or an imported local MapLibre pack, never decorative/synthetic tiles.
 // Camera position changes only in response to explicit user commands.
+private struct HomeTrailSegment: Identifiable {
+    let id: UUID
+    let from: CLLocationCoordinate2D
+    let to: CLLocationCoordinate2D
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var location: LocationService
@@ -13,8 +19,16 @@ struct DashboardView: View {
     @EnvironmentObject private var track: TrackRecorder
     @EnvironmentObject private var checkIn: CheckInService
 
-    @State private var homeCamera: MapCameraPosition = .automatic
-    @State private var satellite = true
+    // A map *viewport*, not a claimed GPS fix: the High Peaks make the
+    // first offline-less launch useful for hiking. The GPS button is the
+    // only automatic-free way to recenter on the actual user.
+    @State private var homeCamera: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 44.17, longitude: -73.91),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    )
+    @State private var satellite = false
     @State private var showReadiness = false
     @State private var showDiagnostics = false
     @State private var offlineStyleURL: URL?
@@ -24,6 +38,19 @@ struct DashboardView: View {
     @State private var offlineCameraCommand: OfflineCameraCommand?
 
     private var activePack: MapPack? { state.mapPacks.first(where: \.active) }
+
+    // Display actual imported trail network geometry, never pretend online
+    // map roads are verified hiking trails. Bound overlays for pan speed.
+    private var homeTrailSegments: [HomeTrailSegment] {
+        guard let network = state.trailNetwork,
+              network.edges.count <= 1800 else { return [] }
+        let nodes = Dictionary(network.nodes.map { ($0.id, $0.point.coordinate) },
+                               uniquingKeysWith: { first, _ in first })
+        return network.edges.compactMap { edge in
+            guard let from = nodes[edge.from], let to = nodes[edge.to] else { return nil }
+            return HomeTrailSegment(id: edge.id, from: from, to: to)
+        }
+    }
     private var activePackID: String { activePack?.id.uuidString ?? "none" }
     private var displayingLocalMap: Bool { state.settings.offlineMode && offlineStyleURL != nil }
 
@@ -39,7 +66,7 @@ struct DashboardView: View {
                     safetyTicker
                     ScrollView {
                         VStack(spacing: 0) {
-                            terrainWorkspace(height: max(250, min(465, viewport.size.height * 0.44)))
+                            terrainWorkspace(height: max(340, min(560, viewport.size.height * 0.63)))
                             priorityAndLocation
                             routeSummary
                             utilityTray
@@ -316,6 +343,10 @@ struct DashboardView: View {
         } else {
             Map(position: $homeCamera) {
                 UserAnnotation()
+                ForEach(homeTrailSegments) { trail in
+                    MapPolyline(coordinates: [trail.from, trail.to])
+                        .stroke(FieldTheme.accent.opacity(0.8), lineWidth: 2.4)
+                }
                 if let route = state.activeRoute, route.points.count > 1 {
                     MapPolyline(coordinates: route.points.map(\.coordinate))
                         .stroke(FieldTheme.accent, lineWidth: 4)
@@ -328,8 +359,11 @@ struct DashboardView: View {
                     }
                 }
             }
+            // Hiking-oriented relief is the default. Satellite is optional,
+            // not the initial map. The real imported trail network is drawn
+            // over either Apple basemap when the user's data contains trails.
             .mapStyle(satellite ? .imagery(elevation: .realistic) :
-                      .standard(elevation: .realistic, emphasis: .muted))
+                      .standard(elevation: .realistic))
             .accessibilityLabel("Interactive live map. Expand for offline map management.")
         }
     }
