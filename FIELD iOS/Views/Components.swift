@@ -78,3 +78,93 @@ extension TimeInterval {
         return "\(m)m"
     }
 }
+
+
+// Shared chrome for secondary workstations ONLY. The Home layout does not use
+// these controls, so changes to Map / Route / Comms / Tools cannot shift Home.
+struct SecondaryConsoleTitle: View {
+    let title: String
+    let status: String
+    let symbol: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(FieldTheme.accent)
+            Text(title.uppercased())
+                .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(FieldTheme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Spacer(minLength: 3)
+            Text(status.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(FieldTheme.dim)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 43)
+        .background(FieldTheme.panel)
+        .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct SecondaryConsolePanel<Content: View>: View {
+    let title: String
+    var detail: String = ""
+    @ViewBuilder let content: Content
+
+    init(title: String, detail: String = "", @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.detail = detail
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text(title.uppercased())
+                    .foregroundStyle(FieldTheme.text)
+                Spacer(minLength: 4)
+                if !detail.isEmpty {
+                    Text(detail.uppercased())
+                        .foregroundStyle(FieldTheme.dim)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .font(.system(size: 10, weight: .bold, design: .monospaced))
+            .tracking(0.35)
+            .padding(.horizontal, 10)
+            .frame(height: 34)
+            .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
+
+            content.padding(10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+    }
+}
+
+struct SecondaryConsoleButton: ButtonStyle {
+    var emphasized: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .foregroundStyle(emphasized ? FieldTheme.background : FieldTheme.accent)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .padding(.horizontal, 7)
+            .background(configuration.isPressed
+                        ? FieldTheme.accent.opacity(0.70)
+                        : (emphasized ? FieldTheme.accent : FieldTheme.panelRaised))
+            .overlay(Rectangle().stroke(
+                emphasized ? FieldTheme.accent : FieldTheme.border, lineWidth: 1))
+            .contentShape(Rectangle())
+    }
+}
