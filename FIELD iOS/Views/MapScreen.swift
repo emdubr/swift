@@ -87,17 +87,54 @@ struct MapScreen: View {
                 }
                 }
 
-                VStack {
-                    mapSourceLabel
+                VStack(spacing: 0) {
+                    SecondaryConsoleTitle(
+                        title: "TERRAIN WORKSPACE",
+                        status: usingOffline ? "LOCAL PMTILES" : "LIVE MAP",
+                        symbol: "map"
+                    )
+                    HStack(spacing: 7) {
+                        mapSourceLabel
+                        Spacer(minLength: 4)
+                        Button {
+                            showSearch.toggle()
+                        } label: {
+                            Image(systemName: showSearch ? "xmark" : "magnifyingglass")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(FieldTheme.accent)
+                                .frame(width: 42, height: 38)
+                                .background(FieldTheme.panel.opacity(0.97))
+                                .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                        }
+                        .accessibilityLabel(showSearch ? "Close map search" : "Search offline places and waypoints")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.top, 7)
+                    if showSearch {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundStyle(FieldTheme.accent)
+                                TextField("SEARCH LOCAL PLACES / WAYPOINTS", text: $searchText)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(FieldTheme.text)
+                                    .tint(FieldTheme.accent)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                            }
+                            .padding(9)
+                            searchResults
+                        }
+                        .background(FieldTheme.panel.opacity(0.985))
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                        .padding(.horizontal, 8)
+                        .padding(.top, 5)
+                    }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .allowsHitTesting(false)
 
                 VStack(spacing: 9) {
-                    if showSearch { searchResults }
-                    if usingOffline {
+                     if usingOffline {
                         Text("LOCAL PMTILES // NO NETWORK TILES")
                             .font(.caption2.bold().monospaced()).padding(8)
                             .background(.regularMaterial, in: Capsule())
@@ -111,18 +148,7 @@ struct MapScreen: View {
                     mapHUD
                 }.padding()
             }
-            .navigationTitle("TERRAIN MAP")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSearch.toggle() } label: {
-                        Image(systemName: showSearch ? "xmark" : "magnifyingglass")
-                            .frame(width: 44, height: 42)
-                    }
-                    .accessibilityLabel(showSearch ? "Close map search" : "Search offline places and waypoints")
-                }
-            }
-            .searchable(text: $searchText, isPresented: $showSearch, prompt: "Offline places / waypoints")
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: activeStyleID) {
                 offlineStyleURL = nil
                 offlineMapError = nil
@@ -161,8 +187,8 @@ struct MapScreen: View {
         }
         .padding(.horizontal, 11)
         .frame(height: 36)
-        .background(FieldTheme.panel.opacity(0.94), in: Capsule())
-        .overlay(Capsule().stroke(FieldTheme.border.opacity(0.7)))
+        .background(FieldTheme.panel.opacity(0.96))
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -189,12 +215,8 @@ struct MapScreen: View {
             }
         }
         .padding(7)
-        .background(FieldTheme.panel.opacity(0.96),
-                    in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(FieldTheme.border.opacity(0.82), lineWidth: 1)
-        }
+        .background(FieldTheme.panel.opacity(0.97))
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -206,8 +228,8 @@ struct MapScreen: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
                 .frame(width: 42, height: 42)
-                .background(FieldTheme.panelRaised.opacity(0.85),
-                            in: RoundedRectangle(cornerRadius: 12))
+                .background(FieldTheme.panelRaised.opacity(0.9))
+                .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.75), lineWidth: 1))
         }
         .disabled(disabled)
         .accessibilityLabel(name)
@@ -230,12 +252,9 @@ struct MapScreen: View {
         }
         .font(.caption.bold().monospaced())
         .padding(.horizontal, 13)
-        .frame(maxWidth: .infinity, minHeight: 46)
-        .background(FieldTheme.panel.opacity(0.97), in: RoundedRectangle(cornerRadius: 13))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13)
-                .stroke(FieldTheme.border.opacity(0.82), lineWidth: 1)
-        }
+        .frame(maxWidth: .infinity, minHeight: 39)
+        .background(FieldTheme.panel.opacity(0.97))
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
     }
 
     private var searchResults: some View {
@@ -243,7 +262,7 @@ struct MapScreen: View {
         return VStack(spacing: 0) {
             if results.isEmpty {
                 Text(searchText.isEmpty ? "Search local waypoints and imported POIs." : "No local matches.")
-                    .font(.caption).foregroundStyle(.secondary).padding()
+                    .font(.caption.monospaced()).foregroundStyle(FieldTheme.dim).padding()
             } else {
                 ForEach(Array(results.enumerated()), id: \.offset) { _, item in
                     Button {
@@ -260,8 +279,8 @@ struct MapScreen: View {
                 }
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .frame(maxHeight: 230)
+        .background(FieldTheme.panel)
+        .frame(maxHeight: 205)
     }
 
     private func centerOnUser() {
