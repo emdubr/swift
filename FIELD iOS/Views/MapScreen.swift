@@ -12,7 +12,14 @@ private struct VisibleTrailSegment: Identifiable {
 struct MapScreen: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var locationService: LocationService
-    @State private var position: MapCameraPosition = .automatic
+    // This is an example hiking-region viewport until the user selects GPS,
+    // a route or an imported pack; never present it as live device position.
+    @State private var position: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 44.17, longitude: -73.91),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    )
     @State private var searchText = ""
     @State private var showSearch = false
     @State private var mapMode = 0
@@ -59,7 +66,7 @@ struct MapScreen: View {
                     UserAnnotation()
                     ForEach(visibleTrailSegments) { segment in
                         MapPolyline(coordinates: [segment.start, segment.end])
-                            .stroke(FieldTheme.dim.opacity(0.55), lineWidth: 2)
+                            .stroke(FieldTheme.accent.opacity(0.8), lineWidth: 2.4)
                     }
                     if let route = state.activeRoute, route.points.count >= 2 {
                         MapPolyline(coordinates: route.points.map(\.coordinate))
@@ -72,12 +79,11 @@ struct MapScreen: View {
                         }
                     }
                 }
-                .mapStyle(mapMode == 1 ? .imagery(elevation: .realistic) : .standard(elevation: .realistic, emphasis: .muted))
+                .mapStyle(mapMode == 1 ? .imagery(elevation: .realistic) : .standard(elevation: .realistic))
                 .mapControls {
                     MapCompass()
                     MapScaleView()
-                    MapUserLocationButton()
-                    MapPitchToggle()
+                    // GPS and layer switching are in our compact floating dock.
                 }
                 }
 
@@ -143,19 +149,22 @@ struct MapScreen: View {
             Circle()
                 .fill(usingOffline ? FieldTheme.accent : FieldTheme.amber)
                 .frame(width: 6, height: 6)
-            Text(usingOffline ? "LOCAL PMTILES" : "APPLE MAPKIT")
+            Text(usingOffline ? "LOCAL HIKING PACK" : (mapMode == 0 ? "HIKING RELIEF" : "SATELLITE"))
                 .font(.caption2.bold().monospaced())
                 .tracking(0.8)
                 .foregroundStyle(FieldTheme.text)
-            Spacer(minLength: 5)
-            Text(state.activeRoute == nil ? "NO ROUTE" : "ROUTE LOADED")
-                .font(.caption2.monospaced())
-                .foregroundStyle(FieldTheme.dim)
+            if state.activeRoute != nil {
+                Text("• ROUTE")
+                    .font(.caption2.bold().monospaced())
+                    .foregroundStyle(FieldTheme.accent)
+            }
         }
         .padding(.horizontal, 11)
         .frame(height: 36)
-        .background(FieldTheme.panel.opacity(0.95), in: Capsule())
+        .background(FieldTheme.panel.opacity(0.94), in: Capsule())
         .overlay(Capsule().stroke(FieldTheme.border.opacity(0.7)))
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // Floating native controls stay above the tab bar, without blocking
@@ -164,12 +173,14 @@ struct MapScreen: View {
         HStack(spacing: 10) {
             mapTool(symbol: "location.north.line.fill", name: "Center on GPS",
                     disabled: locationService.location == nil) { centerOnUser() }
-            mapTool(symbol: "point.topleft.down.to.point.bottomright.curvepath",
-                    name: "Fit active route", disabled: state.activeRoute == nil) { fitRoute() }
+            if state.activeRoute != nil {
+                mapTool(symbol: "point.topleft.down.to.point.bottomright.curvepath",
+                        name: "Fit active route") { fitRoute() }
+            }
             mapTool(symbol: offlineStyleURL == nil ? "square.3.layers.3d" : "square.stack.3d.up",
                     name: offlineStyleURL != nil
                         ? (showingOffline ? "Use online map" : "Use offline map")
-                        : (mapMode == 0 ? "Use satellite imagery" : "Use standard map")) {
+                        : (mapMode == 0 ? "Use satellite imagery" : "Use hiking relief map")) {
                 if offlineStyleURL != nil {
                     showingOffline.toggle()
                 } else {
@@ -194,7 +205,7 @@ struct MapScreen: View {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
-                .frame(width: 46, height: 46)
+                .frame(width: 42, height: 42)
                 .background(FieldTheme.panelRaised.opacity(0.85),
                             in: RoundedRectangle(cornerRadius: 12))
         }

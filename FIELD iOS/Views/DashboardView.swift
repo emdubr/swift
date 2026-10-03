@@ -5,6 +5,12 @@ import OSLog
 // Map-first mobile counterpart to the web console. The visible map is real
 // MapKit or an imported local MapLibre pack, never decorative/synthetic tiles.
 // Camera position changes only in response to explicit user commands.
+private struct HomeTrailSegment: Identifiable {
+    let id: UUID
+    let from: CLLocationCoordinate2D
+    let to: CLLocationCoordinate2D
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var location: LocationService
@@ -13,8 +19,16 @@ struct DashboardView: View {
     @EnvironmentObject private var track: TrackRecorder
     @EnvironmentObject private var checkIn: CheckInService
 
-    @State private var homeCamera: MapCameraPosition = .automatic
-    @State private var satellite = true
+    // A map *viewport*, not a claimed GPS fix: the High Peaks make the
+    // first offline-less launch useful for hiking. The GPS button is the
+    // only automatic-free way to recenter on the actual user.
+    @State private var homeCamera: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 44.17, longitude: -73.91),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    )
+    @State private var satellite = false
     @State private var showReadiness = false
     @State private var showDiagnostics = false
     @State private var offlineStyleURL: URL?
@@ -24,6 +38,19 @@ struct DashboardView: View {
     @State private var offlineCameraCommand: OfflineCameraCommand?
 
     private var activePack: MapPack? { state.mapPacks.first(where: \.active) }
+
+    // Display actual imported trail network geometry, never pretend online
+    // map roads are verified hiking trails. Bound overlays for pan speed.
+    private var homeTrailSegments: [HomeTrailSegment] {
+        guard let network = state.trailNetwork,
+              network.edges.count <= 1800 else { return [] }
+        let nodes = Dictionary(network.nodes.map { ($0.id, $0.point.coordinate) },
+                               uniquingKeysWith: { first, _ in first })
+        return network.edges.compactMap { edge in
+            guard let from = nodes[edge.from], let to = nodes[edge.to] else { return nil }
+            return HomeTrailSegment(id: edge.id, from: from, to: to)
+        }
+    }
     private var activePackID: String { activePack?.id.uuidString ?? "none" }
     private var displayingLocalMap: Bool { state.settings.offlineMode && offlineStyleURL != nil }
 
@@ -31,27 +58,27 @@ struct DashboardView: View {
         NavigationStack {
             GeometryReader { viewport in
                 VStack(spacing: 0) {
+                    // Keep the web command rail visible while the rest can
+                    // scroll on compact iPhones. The bottom dock is in actual
+                    // layout, NOT a safe-area overlay that clips off-screen.
                     commandHeader
                     statusStrip
                     safetyTicker
-                    terrainWorkspace(
-                        height: max(300, viewport.size.height
-                            - 44   // command header
-                            - 63   // device status
-                            - 25   // safety ticker
-                            - 93   // priority + coordinates
-                            - 91   // route summary
-                            - 62)  // command dock / safe-area allowance
-                    )
-                    priorityAndLocation
-                    routeSummary
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            terrainWorkspace(height: max(340, min(560, viewport.size.height * 0.63)))
+                            priorityAndLocation
+                            routeSummary
+                            utilityTray
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    commandDock
                 }
                 .padding(.horizontal, 7)
                 .padding(.top, 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(FieldTheme.background.ignoresSafeArea())
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    commandDock
-                }
             }
             .toolbar(.hidden, for: .navigationBar)
             // Home supplies the web-console's own compact module dock.
@@ -195,24 +222,6 @@ struct DashboardView: View {
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             VStack(spacing: 0) {
-                HStack(spacing: 5) {
-                    Image(systemName: "mountain.2.fill")
-                        .foregroundStyle(FieldTheme.accent)
-                    Text("TERRAIN MAP  //  FIELD GRID")
-                        .foregroundStyle(FieldTheme.text)
-                    Spacer(minLength: 2)
-                    Text(displayingLocalMap ? "LOCAL PMTILES" :
-                         state.settings.offlineMode ? "NO LOCAL MAP" : "APPLE MAPKIT")
-                        .foregroundStyle(displayingLocalMap ? FieldTheme.accent : FieldTheme.amber)
-                        .minimumScaleFactor(0.7)
-                }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .frame(height: 37)
-                .background(FieldTheme.panel.opacity(0.95))
-                .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
-
                 HStack(alignment: .top) {
                     Button {
                         if displayingLocalMap {
@@ -227,7 +236,7 @@ struct DashboardView: View {
                             Image(systemName: "square.3.layers.3d")
                             Text(displayingLocalMap ? "LOCAL" :
                                  state.settings.offlineMode ? "IMPORT MAP" :
-                                 (satellite ? "SATELLITE" : "STANDARD"))
+                                 (satellite ? "SATELLITE" : "HIKING"))
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 8))
                         }
@@ -242,36 +251,41 @@ struct DashboardView: View {
                     VStack(spacing: 1) {
                         mapTool("location.north.fill", "Center on current GPS fix",
                                 disabled: location.location == nil) { centerOnUser() }
-                        Rectangle().fill(FieldTheme.border).frame(height: 1)
-                        mapTool("point.topleft.down.to.point.bottomright.curvepath",
-                                "Fit loaded route", disabled: state.activeRoute == nil) { fitRoute() }
-                        Rectangle().fill(FieldTheme.border).frame(height: 1)
-                        mapTool("square.stack.3d.up", "Open full map and map layers") {
-                            state.selectedTab = .map
+                        if state.activeRoute != nil {
+                            Rectangle().fill(FieldTheme.border).frame(height: 1)
+                            mapTool("point.topleft.down.to.point.bottomright.curvepath",
+                                    "Fit loaded route") { fitRoute() }
                         }
                     }
+                    .frame(width: 43)
+                    .fixedSize(horizontal: true, vertical: true)
                     .background(FieldTheme.panel.opacity(0.96))
                     .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                 }
                 .padding(9)
                 Spacer(minLength: 0)
-                HStack {
-                    Label(gpsValue == "FIX" ? "CURRENT FIX" : "MAP VIEW · NO VERIFIED GPS",
-                          systemImage: gpsValue == "FIX" ? "location.fill" : "location.slash")
-                    Spacer(minLength: 4)
+                HStack(spacing: 5) {
+                    Text(gpsValue == "FIX" ? "GPS FIX" : "HIGH PEAKS EXAMPLE · NO GPS")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.horizontal, 9)
+                        .frame(height: 29)
+                        .background(FieldTheme.panel.opacity(0.92))
+                        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                    Spacer(minLength: 1)
                     Button { state.selectedTab = .map } label: {
-                        HStack(spacing: 4) {
-                            Text("EXPAND MAP")
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .foregroundStyle(FieldTheme.accent)
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 37, height: 37)
+                            .background(FieldTheme.panel.opacity(0.92))
+                            .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                     }
+                    .accessibilityLabel("Expand to the full hiking map")
                 }
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(FieldTheme.text)
+                .foregroundStyle(FieldTheme.accent)
                 .padding(.horizontal, 9)
-                .frame(height: 35)
-                .background(FieldTheme.panel.opacity(0.96))
+                .padding(.bottom, 8)
             }
         }
         .frame(height: height)
@@ -314,6 +328,10 @@ struct DashboardView: View {
         } else {
             Map(position: $homeCamera) {
                 UserAnnotation()
+                ForEach(homeTrailSegments) { trail in
+                    MapPolyline(coordinates: [trail.from, trail.to])
+                        .stroke(FieldTheme.accent.opacity(0.8), lineWidth: 2.4)
+                }
                 if let route = state.activeRoute, route.points.count > 1 {
                     MapPolyline(coordinates: route.points.map(\.coordinate))
                         .stroke(FieldTheme.accent, lineWidth: 4)
@@ -326,8 +344,11 @@ struct DashboardView: View {
                     }
                 }
             }
+            // Hiking-oriented relief is the default. Satellite is optional,
+            // not the initial map. The real imported trail network is drawn
+            // over either Apple basemap when the user's data contains trails.
             .mapStyle(satellite ? .imagery(elevation: .realistic) :
-                      .standard(elevation: .realistic, emphasis: .muted))
+                      .standard(elevation: .realistic))
             .accessibilityLabel("Interactive live map. Expand for offline map management.")
         }
     }
@@ -340,6 +361,8 @@ struct DashboardView: View {
                 .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
                 .frame(width: 43, height: 43)
         }
+        .frame(width: 43, height: 43)
+        .buttonStyle(.plain)
         .disabled(disabled)
         .accessibilityLabel(label)
     }
