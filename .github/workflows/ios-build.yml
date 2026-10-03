@@ -28,7 +28,7 @@ jobs:
     # Standard Intel (NOT a paid larger runner) is used only for explicit startup diagnostics.
     # Default PR/push compilation stays on the standard public ARM runner.
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))) && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Show Apple toolchain
@@ -103,7 +103,7 @@ jobs:
           retention-days: 1
       - name: Boot and install free iPhone simulator for UI screenshots
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))
-        timeout-minutes: 12
+        timeout-minutes: 16
         shell: bash
         run: |
           set -euo pipefail
@@ -124,7 +124,29 @@ jobs:
           import subprocess,sys,time
           device=sys.argv[1]
           app="build/DerivedData/Build/Products/Debug-iphonesimulator/FIELD iOS.app"
-          subprocess.run(["xcrun","simctl","install",device,app],check=True,timeout=150)
+          # CoreSimulator's first install can hang on public Intel runners even
+          # after bootstatus reports 'Finished'. Retry the same real app rather
+          # than silently substituting a mockup or declaring screenshot success.
+          installed=False
+          for attempt in range(2):
+              print(f"Installing real native app, attempt {attempt + 1}/2",flush=True)
+              try:
+                  result=subprocess.run(["xcrun","simctl","install",device,app],
+                                        capture_output=True,text=True,timeout=185)
+                  with open(f"build/screenshots/install-attempt-{attempt+1}.txt","w") as log:
+                      log.write(f"exit={result.returncode}\n{result.stdout}\n{result.stderr}")
+                  if result.returncode==0:
+                      installed=True
+                      break
+                  print("Simulator app install returned error: "+result.stderr[-1000:],flush=True)
+              except subprocess.TimeoutExpired:
+                  print(f"Simulator install attempt {attempt + 1} timed out after 185s.",flush=True)
+                  with open(f"build/screenshots/install-attempt-{attempt+1}.txt","w") as log:
+                      log.write("simctl install timed out after 185 seconds\n")
+              if attempt==0:
+                  time.sleep(12)
+          if not installed:
+              raise SystemExit("Real app did not install: refusing synthetic UI screenshots.")
           # All screenshot launches use -FIELDRenderOnly, which never requests
           # hardware permissions. Do not invoke CoreSimulator privacy/status_bar
           # here: these commands have hung CoreSimulatorService on free hosted
