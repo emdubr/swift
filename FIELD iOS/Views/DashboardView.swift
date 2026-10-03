@@ -31,27 +31,27 @@ struct DashboardView: View {
         NavigationStack {
             GeometryReader { viewport in
                 VStack(spacing: 0) {
+                    // Keep the web command rail visible while the rest can
+                    // scroll on compact iPhones. The bottom dock is in actual
+                    // layout, NOT a safe-area overlay that clips off-screen.
                     commandHeader
                     statusStrip
                     safetyTicker
-                    terrainWorkspace(
-                        height: max(300, viewport.size.height
-                            - 44   // command header
-                            - 63   // device status
-                            - 25   // safety ticker
-                            - 93   // priority + coordinates
-                            - 91   // route summary
-                            - 62)  // command dock / safe-area allowance
-                    )
-                    priorityAndLocation
-                    routeSummary
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            terrainWorkspace(height: max(250, min(465, viewport.size.height * 0.44)))
+                            priorityAndLocation
+                            routeSummary
+                            utilityTray
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    commandDock
                 }
                 .padding(.horizontal, 7)
                 .padding(.top, 2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(FieldTheme.background.ignoresSafeArea())
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    commandDock
-                }
             }
             .toolbar(.hidden, for: .navigationBar)
             // Home supplies the web-console's own compact module dock.
@@ -250,6 +250,8 @@ struct DashboardView: View {
                             state.selectedTab = .map
                         }
                     }
+                    .frame(width: 43)
+                    .fixedSize(horizontal: true, vertical: true)
                     .background(FieldTheme.panel.opacity(0.96))
                     .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                 }
@@ -340,6 +342,8 @@ struct DashboardView: View {
                 .foregroundStyle(disabled ? FieldTheme.dim : FieldTheme.accent)
                 .frame(width: 43, height: 43)
         }
+        .frame(width: 43, height: 43)
+        .buttonStyle(.plain)
         .disabled(disabled)
         .accessibilityLabel(label)
     }
