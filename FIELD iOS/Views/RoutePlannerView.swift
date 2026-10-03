@@ -6,7 +6,14 @@ struct RoutePlannerView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var location: LocationService
     @State private var draft = FieldRoute()
-    @State private var camera: MapCameraPosition = .automatic
+    // Consistent example hiking-region viewport until a GPS fix, saved route
+    // or the user's own map data selects an actual location.
+    @State private var camera: MapCameraPosition = .region(
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 44.17, longitude: -73.91),
+            span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.18)
+        )
+    )
     @State private var importing = false
     @State private var importError: String?
     @State private var undoStack: [FieldRoute] = []
@@ -65,7 +72,9 @@ struct RoutePlannerView: View {
                             actionPanel
                         }
                         .padding(.horizontal, 8)
-                        .padding(.bottom, 12)
+                        // Editor and import controls must scroll fully above the
+                        // always-visible save bar, even on small iPhone screens.
+                        .padding(.bottom, 30)
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
@@ -195,7 +204,7 @@ struct RoutePlannerView: View {
         .tint(FieldTheme.accent)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(FieldTheme.background.opacity(0.97))
+        .background(FieldTheme.background)
         .overlay(alignment: .top) {
             Rectangle().fill(FieldTheme.border).frame(height: 1)
         }
