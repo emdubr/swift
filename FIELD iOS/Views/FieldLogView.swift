@@ -7,16 +7,21 @@ struct FieldLogView: View {
 
     var body: some View {
         List {
-            Section("Scratchpad") {
-                TextEditor(text: $state.scratchpad).frame(minHeight: 100)
+            Section("SCRATCHPAD") {
+                TextEditor(text: $state.scratchpad)
+                    .font(.system(size: 12, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 86)
+                    .background(FieldTheme.panelRaised)
                 Button("Save Scratchpad") { state.persist() }
             }
-            Section("New event") {
+            Section("NEW EVENT") {
                 TextField("Note", text: $note, axis: .vertical)
+                    .font(.system(size: 12, design: .monospaced))
                 Button("Log Note") { add(markPosition: false) }.disabled(note.isEmpty)
                 Button("Mark Current Position") { add(markPosition: true) }.disabled(location.location == nil)
             }
-            Section("Timeline") {
+            Section("TIMELINE") {
                 ForEach(state.fieldLog.sorted(by: { $0.createdAt > $1.createdAt })) { entry in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack { Text(entry.category).font(.caption.bold()); Spacer(); Text(entry.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption2) }
@@ -25,7 +30,10 @@ struct FieldLogView: View {
                     }
                 }
             }
-        }.navigationTitle("Field Log")
+        }
+        .scrollContentBackground(.hidden)
+        .background(FieldTheme.background)
+        .navigationTitle("FIELD LOG")
     }
 
     private func add(markPosition: Bool) {
