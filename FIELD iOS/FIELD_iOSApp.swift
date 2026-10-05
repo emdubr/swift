@@ -42,6 +42,11 @@ struct FIELD_iOSApp: App {
     private let previewRoute = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewRoute")
     private let previewComms = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewComms")
     private let previewTools = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewTools")
+    // Real Tools submodule screenshots; these arguments are never set on iPhone.
+    private let previewModule: AppModule? = ProcessInfo.processInfo.arguments.contains("-FIELDPreviewSensors")
+        ? .sensors : ProcessInfo.processInfo.arguments.contains("-FIELDPreviewWeather")
+        ? .weather : ProcessInfo.processInfo.arguments.contains("-FIELDPreviewMission")
+        ? .mission : nil
     // CI screenshot-only: render genuine native views but avoid emulator-only sensor startup.
     private let renderOnly = ProcessInfo.processInfo.arguments.contains("-FIELDRenderOnly")
     // Diagnostic only. Same real DashboardView, without TabView / RootView
@@ -64,6 +69,19 @@ struct FIELD_iOSApp: App {
                     .environmentObject(peripheralBridge)
                     .preferredColorScheme(.dark)
                     .onAppear { Logger(subsystem: "com.fieldos.native", category: "boot").notice("FIELD_DIAGNOSTIC_ISOLATED_DASHBOARD_VISIBLE") }
+            } else if let previewModule {
+                NavigationStack {
+                    ModuleDestination(module: previewModule)
+                }
+                .environmentObject(appState)
+                .environmentObject(locationService)
+                .environmentObject(trackRecorder)
+                .environmentObject(meshService)
+                .environmentObject(sensorService)
+                .environmentObject(checkInService)
+                .environmentObject(peripheralBridge)
+                .preferredColorScheme(.dark)
+                .tint(FieldTheme.accent)
             } else {
                 RootView()
                     .environmentObject(appState)
