@@ -19,43 +19,92 @@ struct WeatherView: View {
             && (0...180).contains(Date().timeIntervalSince(fix.timestamp))
     }
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 9) {
-                    FieldHeader(title: "Weather intelligence", subtitle: state.weather.source)
-                    Text(state.weather.summary).foregroundStyle(FieldTheme.text)
-                    if let updated = state.weather.updatedAt {
-                        Text("Updated \(updated.formatted(date: .abbreviated, time: .shortened)) • \(Int(max(0, Date().timeIntervalSince(updated) / 60))) minutes old")
-                            .font(.caption).foregroundStyle(FieldTheme.dim)
-                    }
-                    if let temp = state.weather.temperatureC { Text(String(format: "Temperature %.1f°C", temp)).font(.headline.monospaced()) }
-                    if let wind = state.weather.windKPH { Text(String(format: "Wind %.0f km/h", wind)).font(.headline.monospaced()) }
-                    if !state.weather.alerts.isEmpty { Text("Alert details unavailable in this view. Check your official forecast.").foregroundStyle(FieldTheme.amber) }
-                }.fieldPanel()
-                VStack(alignment: .leading, spacing: 9) {
-                    FieldHeader(title: "Apple Weather live fetch")
-                    Button(isLoading ? "FETCHING…" : "REFRESH USING MY GPS") { Task { await refresh() } }
-                        .buttonStyle(.borderedProminent).disabled(isLoading || !fixIsFresh || state.settings.offlineMode)
-                    if !fixIsFresh { Text("Fresh and accurate GPS required (less than 3 minutes old).") }
-                    if state.settings.offlineMode { Text("Offline mode: online weather fetching is disabled.") }
-                    if let fetchError { Text(fetchError).foregroundStyle(FieldTheme.amber) }
-                    #if canImport(WeatherKit)
-                    if let attribution {
-                        HStack {
-                            AsyncImage(url: attribution.combinedMarkDarkURL) { image in image.resizable().scaledToFit() } placeholder: { Text("Apple Weather") }
-                                .frame(maxWidth: 170, maxHeight: 32)
-                            Link("Weather data sources", destination: attribution.legalPageURL)
-                                .font(.caption)
+        VStack(spacing: 0) {
+            SecondaryConsoleTitle(title: "WEATHER STATION",
+                                  status: state.settings.offlineMode ? "OFFLINE" : "LIVE CAPABLE",
+                                  symbol: "cloud.sun")
+            ScrollView {
+                VStack(spacing: 10) {
+                    SecondaryConsolePanel(title: "Field forecast",
+                                          detail: state.weather.source) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Text(state.weather.summary)
+                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                .foregroundStyle(FieldTheme.text)
+                            HStack(spacing: 7) {
+                                MetricTile(label: "TEMPERATURE",
+                                           value: state.weather.temperatureC.map {
+                                               String(format: "%.1f°C", $0)
+                                           } ?? "--")
+                                MetricTile(label: "WIND",
+                                           value: state.weather.windKPH.map {
+                                               String(format: "%.0f km/h", $0)
+                                           } ?? "--")
+                            }
+                            if let updated = state.weather.updatedAt {
+                                Text("LAST READING: " + updated.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(FieldTheme.dim)
+                            } else {
+                                Text("NO LIVE FORECAST LOADED")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(FieldTheme.amber)
+                            }
+                            if !state.weather.alerts.isEmpty {
+                                Label("Weather alerts exist. Review official alert details.",
+                                      systemImage: "exclamationmark.triangle")
+                                    .font(.caption.monospaced()).foregroundStyle(FieldTheme.amber)
+                            }
                         }
                     }
-                    #endif
-                    Text("Online WeatherKit access requires a configured Apple developer entitlement. WeatherKit data is not retained as a permanent offline database; verify forecasts and alerts with an official source before remote travel.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Weather reviewed for this trip", isOn: $state.readiness.weatherChecked)
-                        .onChange(of: state.readiness.weatherChecked) { _, _ in state.persist() }
-                }.fieldPanel()
-            }.padding(14)
-        }.background(FieldTheme.background).navigationTitle("Weather")
+                    SecondaryConsolePanel(title: "Live provider", detail: "APPLE WEATHER") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button(isLoading ? "FETCHING…" : "REFRESH USING DEVICE GPS") {
+                                Task { await refresh() }
+                            }
+                            .buttonStyle(SecondaryConsoleButton(emphasized: true))
+                            .disabled(isLoading || !fixIsFresh || state.settings.offlineMode)
+                            if !fixIsFresh {
+                                Label("A fresh GPS fix is required before refreshing.",
+                                      systemImage: "location.slash")
+                                    .foregroundStyle(FieldTheme.amber)
+                            }
+                            if state.settings.offlineMode {
+                                Text("OFFLINE MODE: LIVE WEATHER DISABLED")
+                                    .foregroundStyle(FieldTheme.amber)
+                            }
+                            if let fetchError {
+                                Text(fetchError).foregroundStyle(FieldTheme.amber)
+                            }
+                            #if canImport(WeatherKit)
+                            if let attribution {
+                                HStack {
+                                    AsyncImage(url: attribution.combinedMarkDarkURL) { image in
+                                        image.resizable().scaledToFit()
+                                    } placeholder: { Text("Apple Weather") }
+                                        .frame(maxWidth: 170, maxHeight: 32)
+                                    Link("Data sources", destination: attribution.legalPageURL)
+                                }
+                            }
+                            #endif
+                            Toggle("WEATHER REVIEWED FOR THIS TRIP",
+                                   isOn: $state.readiness.weatherChecked)
+                                .tint(FieldTheme.accent)
+                                .onChange(of: state.readiness.weatherChecked) { _, _ in state.persist() }
+                        }
+                        .font(.caption.monospaced())
+                        .foregroundStyle(FieldTheme.text)
+                    }
+                    Text("WeatherKit requires a configured Apple entitlement and a connection. Verify forecasts with an official source before remote travel.")
+                        .font(.caption2.monospaced()).foregroundStyle(FieldTheme.dim)
+                }
+                .padding(10)
+            }
+        }
+        .background(FieldTheme.background.ignoresSafeArea())
+        // Keep the compact iOS back affordance when opened from Tools.
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     @MainActor private func refresh() async {

@@ -75,6 +75,11 @@ struct SystemView: View {
             }
             Section { Button("Clear Native Local Data", role: .destructive) { showingReset = true } }
         }
+        .scrollContentBackground(.hidden)
+        .background(FieldTheme.background.ignoresSafeArea())
+        .tint(FieldTheme.accent)
+        .environment(\.defaultMinListRowHeight, 46)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationTitle("System")
         .onChange(of: state.settings) { _, _ in state.persist() }
         .alert("Clear native local data?", isPresented: $showingReset) {

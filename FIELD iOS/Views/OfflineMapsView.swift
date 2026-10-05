@@ -62,6 +62,11 @@ struct OfflineMapsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(FieldTheme.background.ignoresSafeArea())
+        .tint(FieldTheme.accent)
+        .environment(\.defaultMinListRowHeight, 46)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationTitle("Offline Maps")
         .fileImporter(isPresented: $importingMap,
                       allowedContentTypes: [UTType(filenameExtension: "pmtiles") ?? .data],

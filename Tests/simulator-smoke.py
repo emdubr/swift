@@ -205,7 +205,13 @@ def main() -> int:
         return 6
     if not launch(device, "07-native-tools", ["-FIELDPreviewTools", "-FIELDRenderOnly"]):
         return 7
-    print("Minimal probe, unchanged Home, redesigned Map, Route, Comms and Tools all rendered.", flush=True)
+    if not launch(device, "08-native-sensors", ["-FIELDPreviewSensors", "-FIELDRenderOnly"]):
+        return 8
+    if not launch(device, "09-native-weather", ["-FIELDPreviewWeather", "-FIELDRenderOnly"]):
+        return 9
+    if not launch(device, "10-native-mission", ["-FIELDPreviewMission", "-FIELDRenderOnly"]):
+        return 10
+    print("Unchanged Home, Map, Route, Comms, Tools and real Sensors/Weather/Mission all rendered.", flush=True)
     return 0
 
 
