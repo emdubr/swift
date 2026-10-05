@@ -87,6 +87,24 @@ struct MapScreen: View {
                 }
                 }
 
+                VStack(spacing: 9) {
+                     if usingOffline {
+                        Text("LOCAL PMTILES // NO NETWORK TILES")
+                            .font(.caption2.bold().monospaced()).padding(8)
+                            .background(.regularMaterial, in: Capsule())
+                    } else if state.settings.offlineMode {
+                        Text("NO OFFLINE BASEMAP DISPLAYED — DO NOT RELY ON MAPKIT WITHOUT NETWORK")
+                            .font(.caption2.bold()).foregroundStyle(FieldTheme.amber).padding(8)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    if let offlineMapError { Text(offlineMapError).font(.caption2).foregroundStyle(FieldTheme.danger) }
+                    mapToolDock
+                    mapHUD
+                }.padding()
+            }
+            // Reserve actual layout space for menu and search. Neither should
+            // overlay or steal drag gestures from the interactive hiking map.
+            .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 0) {
                     SecondaryConsoleTitle(
                         title: "TERRAIN WORKSPACE",
@@ -130,23 +148,11 @@ struct MapScreen: View {
                         .padding(.horizontal, 8)
                         .padding(.top, 5)
                     }
-                    Spacer(minLength: 0)
                 }
-
-                VStack(spacing: 9) {
-                     if usingOffline {
-                        Text("LOCAL PMTILES // NO NETWORK TILES")
-                            .font(.caption2.bold().monospaced()).padding(8)
-                            .background(.regularMaterial, in: Capsule())
-                    } else if state.settings.offlineMode {
-                        Text("NO OFFLINE BASEMAP DISPLAYED — DO NOT RELY ON MAPKIT WITHOUT NETWORK")
-                            .font(.caption2.bold()).foregroundStyle(FieldTheme.amber).padding(8)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    if let offlineMapError { Text(offlineMapError).font(.caption2).foregroundStyle(FieldTheme.danger) }
-                    mapToolDock
-                    mapHUD
-                }.padding()
+                .background(FieldTheme.panel.opacity(0.995))
+                .overlay(alignment: .bottom) {
+                    FieldTheme.border.frame(height: 1)
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .task(id: activeStyleID) {
