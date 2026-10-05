@@ -54,6 +54,8 @@ struct SensorsView: View {
             }
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        // Keep the compact iOS back affordance when opened from Tools.
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
