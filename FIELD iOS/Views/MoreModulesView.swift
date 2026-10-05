@@ -3,10 +3,9 @@ import SwiftUI
 struct MoreModulesView: View {
     @EnvironmentObject private var state: AppState
     @State private var search = ""
-    private let columns = [
-        GridItem(.flexible(minimum: 140), spacing: 8),
-        GridItem(.flexible(minimum: 140), spacing: 8)
-    ]
+    @State private var selectedGroup = "ALL"
+    // Two tiles in portrait; flexible extra columns on wider iPhones/iPads.
+    private let columns = [GridItem(.adaptive(minimum: 142, maximum: 195), spacing: 8)]
 
     var body: some View {
         NavigationStack {
@@ -33,7 +32,35 @@ struct MoreModulesView: View {
                 .background(FieldTheme.panelRaised)
                 .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
                 .padding(.horizontal, 10)
-                .padding(.vertical, 9)
+                .padding(.vertical, 7)
+
+                // Quick group jump stays visible while module tiles scroll.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(["ALL"] + moduleGroups.map(\.title), id: \.self) { group in
+                            Button {
+                                selectedGroup = group
+                            } label: {
+                                Text(group)
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 10)
+                                    .frame(minHeight: 35)
+                                    .foregroundStyle(selectedGroup == group
+                                        ? FieldTheme.background : FieldTheme.accent)
+                                    .background(selectedGroup == group
+                                        ? FieldTheme.accent : FieldTheme.panel)
+                                    .overlay(Rectangle().stroke(
+                                        selectedGroup == group
+                                            ? FieldTheme.accent : FieldTheme.border, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(selectedGroup == group ? .isSelected : [])
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                }
+                .padding(.bottom, 8)
 
                 ScrollView {
                     LazyVStack(spacing: 13) {
@@ -48,7 +75,7 @@ struct MoreModulesView: View {
                             .frame(height: 36)
                         }
 
-                        ForEach(moduleGroups, id: \.title) { group in
+                        ForEach(moduleGroups.filter { selectedGroup == "ALL" || $0.title == selectedGroup }, id: \.title) { group in
                             let shown = group.modules.filter { matches($0) }
                             if !shown.isEmpty {
                                 VStack(alignment: .leading, spacing: 7) {
@@ -65,7 +92,8 @@ struct MoreModulesView: View {
                                 }
                             }
                         }
-                        if moduleGroups.allSatisfy({ $0.modules.allSatisfy { !matches($0) } }) {
+                        if moduleGroups.filter({ selectedGroup == "ALL" || $0.title == selectedGroup })
+                            .allSatisfy({ $0.modules.allSatisfy { !matches($0) } }) {
                             SecondaryConsolePanel(title: "Search") {
                                 Text("No matching on-device modules.")
                                     .font(.caption.monospaced())
@@ -137,7 +165,7 @@ struct MoreModulesView: View {
                 .frame(height: 27, alignment: .top)
         }
         .padding(11)
-        .frame(maxWidth: .infinity, minHeight: 115, maxHeight: 115, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 104, maxHeight: 104, alignment: .topLeading)
         .background(FieldTheme.panel)
         .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         .contentShape(Rectangle())
