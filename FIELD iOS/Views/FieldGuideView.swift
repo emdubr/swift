@@ -15,10 +15,21 @@ struct FieldGuideView: View {
     var body: some View {
         List(articles, id: \.0) { article in
             NavigationLink {
-                ScrollView { Text(article.2).font(.body).padding() }.navigationTitle(article.0)
+                ScrollView {
+                    Text(article.2)
+                        .font(.body)
+                        .foregroundStyle(FieldTheme.text)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .background(FieldTheme.background)
+                .navigationTitle(article.0)
             } label: {
                 Label(article.0, systemImage: article.1)
             }
-        }.navigationTitle("Field Guide")
+        }
+        .scrollContentBackground(.hidden)
+        .background(FieldTheme.background)
+        .navigationTitle("FIELD GUIDE")
     }
 }
