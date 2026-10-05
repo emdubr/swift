@@ -7,9 +7,6 @@ struct SensorsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SecondaryConsoleTitle(title: "SENSOR STATION",
-                                  status: location.location == nil ? "AWAITING GNSS" : "DEVICE FIX",
-                                  symbol: "waveform.path.ecg")
             ScrollView {
                 VStack(spacing: 10) {
                     SecondaryConsolePanel(title: "Position receiver", detail: "PHONE GNSS") {
@@ -54,8 +51,17 @@ struct SensorsView: View {
             }
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        // Keep the compact iOS back affordance when opened from Tools.
+        // Use the native navigation-bar space for the FIELD header instead
+        // of reserving an empty bar above a second header. Preserve the
+        // system back button and interactive navigation from Tools.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                SecondaryConsoleTitle(title: "SENSOR STATION",
+                status: location.location == nil ? "AWAITING GNSS" : "DEVICE FIX",
+                symbol: "waveform.path.ecg")
+            }
+        }
     }
 }

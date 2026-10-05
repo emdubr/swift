@@ -20,9 +20,6 @@ struct WeatherView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            SecondaryConsoleTitle(title: "WEATHER STATION",
-                                  status: state.settings.offlineMode ? "OFFLINE" : "LIVE CAPABLE",
-                                  symbol: "cloud.sun")
             ScrollView {
                 VStack(spacing: 10) {
                     SecondaryConsolePanel(title: "Field forecast",
@@ -102,9 +99,18 @@ struct WeatherView: View {
             }
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        // Keep the compact iOS back affordance when opened from Tools.
+        // Use the native navigation-bar space for the FIELD header instead
+        // of reserving an empty bar above a second header. Preserve the
+        // system back button and interactive navigation from Tools.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                SecondaryConsoleTitle(title: "WEATHER STATION",
+                status: state.settings.offlineMode ? "OFFLINE" : "LIVE CAPABLE",
+                symbol: "cloud.sun")
+            }
+        }
     }
 
     @MainActor private func refresh() async {
