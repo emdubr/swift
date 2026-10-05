@@ -16,6 +16,9 @@ struct CommsView: View {
 
     @EnvironmentObject private var mesh: MeshService
     @State private var tab: SectionTab = .chat
+    // Preserve unsent text and recipient while switching Chat / Mesh Map / Inbox.
+    @State private var chatDraft = ""
+    @State private var chatDestination: UInt32? = nil
 
     var body: some View {
         NavigationStack {
@@ -39,7 +42,7 @@ struct CommsView: View {
                                     .minimumScaleFactor(0.8)
                             }
                             .foregroundStyle(tab == item ? FieldTheme.background : FieldTheme.accent)
-                            .frame(maxWidth: .infinity, minHeight: 42)
+                            .frame(maxWidth: .infinity, minHeight: 39)
                             .background(tab == item ? FieldTheme.accent : FieldTheme.panel)
                             .overlay(Rectangle().stroke(
                                 tab == item ? FieldTheme.accent : FieldTheme.border, lineWidth: 1))
@@ -49,7 +52,7 @@ struct CommsView: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 8)
+                .padding(.vertical, 5)
 
                 HStack(spacing: 8) {
                     Circle()
@@ -75,13 +78,13 @@ struct CommsView: View {
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(FieldTheme.text)
                 .padding(.horizontal, 10)
-                .frame(height: 44)
+                .frame(height: 39)
                 .background(FieldTheme.panelRaised)
                 .overlay(alignment: .bottom) { FieldTheme.border.frame(height: 1) }
 
                 Group {
                     switch tab {
-                    case .chat: LoRaChatView()
+                    case .chat: LoRaChatView(draft: $chatDraft, destination: $chatDestination)
                     case .map: MeshMapView()
                     case .inbox: UnifiedInboxView()
                     }
@@ -97,8 +100,8 @@ struct CommsView: View {
 private struct LoRaChatView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var mesh: MeshService
-    @State private var draft = ""
-    @State private var destination: UInt32? = nil
+    @Binding var draft: String
+    @Binding var destination: UInt32?
 
     private var pending: Int {
         state.messages.filter { $0.outgoing && ($0.status == .queued || $0.status == .failed) }.count
@@ -134,7 +137,7 @@ private struct LoRaChatView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 18)
-                        .padding(.vertical, 56)
+                        .padding(.vertical, 27)
                         .overlay(Rectangle().stroke(FieldTheme.border.opacity(0.55), lineWidth: 1))
                     } else {
                         ForEach(state.messages.sorted(by: { $0.createdAt < $1.createdAt })) { message in
@@ -284,6 +287,17 @@ private struct MeshMapView: View {
                                 .foregroundStyle(FieldTheme.dim)
                         }
                         ForEach(mesh.meshNodes) { node in
+                            Button {
+                                // Selecting a cached position moves ONLY the
+                                // map camera. It is never treated as live GPS.
+                                if let coordinate = node.location?.coordinate {
+                                    camera = .region(MKCoordinateRegion(
+                                        center: coordinate,
+                                        span: MKCoordinateSpan(latitudeDelta: 0.02,
+                                                               longitudeDelta: 0.02)
+                                    ))
+                                }
+                            } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
                                     Text(node.name.uppercased())
@@ -310,6 +324,12 @@ private struct MeshMapView: View {
                             .padding(8)
                             .background(FieldTheme.panelRaised)
                             .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(node.location == nil)
+                            .accessibilityHint(node.location == nil
+                                ? "No cached node position available"
+                                : "Center map on this last-reported radio position")
                         }
                         ForEach(mesh.peers) { peer in
                             Button { mesh.connect(to: peer.id) } label: {
