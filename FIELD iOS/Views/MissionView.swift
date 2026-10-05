@@ -5,9 +5,6 @@ struct MissionView: View {
     @EnvironmentObject private var state: AppState
     var body: some View {
         VStack(spacing: 0) {
-            SecondaryConsoleTitle(title: "MISSION CONTROL",
-                                  status: state.mission.active ? "MISSION ACTIVE" : "STANDBY",
-                                  symbol: "scope")
             ScrollView {
                 VStack(spacing: 10) {
                     SecondaryConsolePanel(title: "Expedition", detail: "ON DEVICE") {
@@ -66,8 +63,17 @@ struct MissionView: View {
             .scrollDismissesKeyboard(.interactively)
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        // Keep the compact iOS back affordance when opened from Tools.
+        // Use the native navigation-bar space for the FIELD header instead
+        // of reserving an empty bar above a second header. Preserve the
+        // system back button and interactive navigation from Tools.
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                SecondaryConsoleTitle(title: "MISSION CONTROL",
+                status: state.mission.active ? "MISSION ACTIVE" : "STANDBY",
+                symbol: "scope")
+            }
+        }
     }
 }
