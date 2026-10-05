@@ -34,7 +34,8 @@ struct RoutePlannerView: View {
                         symbol: "point.topleft.down.to.point.bottomright.curvepath"
                     )
                     routeMap
-                        .frame(height: max(250, min(440, viewport.size.height * 0.53)))
+                        // Keep the editor visible even on short iPhones and in landscape.
+                        .frame(height: max(205, min(345, viewport.size.height * 0.40)))
                         .padding(.horizontal, 8)
                         .padding(.top, 8)
                     quickMetrics
@@ -74,7 +75,7 @@ struct RoutePlannerView: View {
                         .padding(.horizontal, 8)
                         // Editor and import controls must scroll fully above the
                         // always-visible save bar, even on small iPhone screens.
-                        .padding(.bottom, 30)
+                        .padding(.bottom, 12)
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
@@ -159,14 +160,34 @@ struct RoutePlannerView: View {
         }
     }
 
+    // One low-height telemetry strip rather than three tall cards. On compact
+    // iPhones the route editor now starts immediately below the live map.
     private var quickMetrics: some View {
         let metrics = RouteEngine.metrics(for: draft)
-        return HStack(spacing: 7) {
-            MetricTile(label: "DISTANCE", value: String(format: "%.2f mi", metrics.distanceMiles))
-            MetricTile(label: "ASCENT", value: String(format: "%.0f ft", metrics.ascentFeet))
-            MetricTile(label: "EST. TIME", value: metrics.estimatedSeconds.fieldDuration)
+        return HStack(spacing: 0) {
+            compactRouteMetric("DISTANCE", String(format: "%.2f MI", metrics.distanceMiles))
+            Rectangle().fill(FieldTheme.border).frame(width: 1, height: 34)
+            compactRouteMetric("ASCENT", String(format: "%.0f FT", metrics.ascentFeet))
+            Rectangle().fill(FieldTheme.border).frame(width: 1, height: 34)
+            compactRouteMetric("ETA", metrics.estimatedSeconds.fieldDuration)
         }
+        .frame(height: 54)
+        .background(FieldTheme.panel)
+        .overlay(Rectangle().stroke(FieldTheme.border, lineWidth: 1))
         .accessibilityElement(children: .contain)
+    }
+
+    private func compactRouteMetric(_ name: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(name).font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(FieldTheme.dim)
+            Text(value).font(.system(size: 12, weight: .heavy, design: .monospaced))
+                .foregroundStyle(FieldTheme.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
     }
 
     // Primary controls remain reachable while the user pans or taps the map.
@@ -183,7 +204,7 @@ struct RoutePlannerView: View {
 
             Button { redo() } label: {
                 Image(systemName: "arrow.uturn.forward")
-                    .frame(width: 48, height: 48)
+                    .frame(width: 44, height: 44)
                     .background(FieldTheme.panelRaised, in: Rectangle())
             }
             .disabled(redoStack.isEmpty)
