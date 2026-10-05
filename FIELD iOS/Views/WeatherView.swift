@@ -102,7 +102,9 @@ struct WeatherView: View {
             }
         }
         .background(FieldTheme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        // Keep the compact iOS back affordance when opened from Tools.
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     @MainActor private func refresh() async {
