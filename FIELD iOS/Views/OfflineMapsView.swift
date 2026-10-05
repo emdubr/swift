@@ -11,7 +11,7 @@ struct OfflineMapsView: View {
 
     var body: some View {
         List {
-            Section("Offline map packs") {
+            Section("OFFLINE MAP PACKS") {
                 Button("Import PMTiles File") { importingMap = true }
                 if state.mapPacks.isEmpty {
                     Text("No native map packs imported yet.").foregroundStyle(.secondary)
@@ -41,7 +41,7 @@ struct OfflineMapsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Offline trail network") {
+            Section("OFFLINE TRAIL NETWORK") {
                 Button("Import Trail GeoJSON") { importingTrails = true }
                 if let network = state.trailNetwork {
                     LabeledContent("Source", value: network.sourceName)
@@ -53,7 +53,7 @@ struct OfflineMapsView: View {
                 }
             }
 
-            Section("Offline place index") {
+            Section("OFFLINE PLACE INDEX") {
                 Button("Import JSON / GeoJSON POIs") { importingPOI = true }
                 LabeledContent("Local points", value: "\(state.offlinePOIs.count)")
                 Button("Clear Imported POIs", role: .destructive) { state.offlinePOIs = []; state.persist() }
@@ -67,7 +67,7 @@ struct OfflineMapsView: View {
         .tint(FieldTheme.accent)
         .environment(\.defaultMinListRowHeight, 46)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle("Offline Maps")
+        .navigationTitle("OFFLINE MAPS")
         .fileImporter(isPresented: $importingMap,
                       allowedContentTypes: [UTType(filenameExtension: "pmtiles") ?? .data],
                       allowsMultipleSelection: false) { result in importMap(result) }
