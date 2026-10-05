@@ -28,7 +28,7 @@ jobs:
     # This PR tests real screenshots on the ordinary public Apple Silicon runner. Intel remains for main previews.
     # Default PR/push compilation stays on the standard public ARM runner.
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]'))) && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Show Apple toolchain
@@ -156,10 +156,10 @@ jobs:
           # Let the hosted free runner settle before the first launch request.
           time.sleep(20)
           PY
-      - name: Capture real native dashboard, map and route planner
+      - name: Capture unchanged Home and every redesigned secondary native screen
         if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[preview]')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[preview]'))
         # Five staged screenshots plus a slow Intel sim can exceed nine minutes.
-        timeout-minutes: 12
+        timeout-minutes: 18
         shell: bash
         run: |
           set -euo pipefail
